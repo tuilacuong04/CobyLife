@@ -153,19 +153,36 @@ export function SlidingTabs<T extends string>({
   };
 
   useLayoutEffect(() => {
+    const activeBtn = btnRefs.current[activeId];
     sync(mountedRef.current);
+    if (mountedRef.current && activeBtn) {
+      activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+    }
     mountedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, items.map((i) => `${i.id}:${i.count ?? ''}`).join('|')]);
+  }, [activeId, items.map((i) => `${i.id}:${i.label}:${i.count ?? ''}`).join('|')]);
 
   useEffect(() => {
     const el = wrapRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
+    const activeBtn = btnRefs.current[activeId];
+    let alive = true;
+    document.fonts?.ready.then(() => {
+      if (alive) sync(false);
+    });
+    if (!el || typeof ResizeObserver === 'undefined') {
+      return () => {
+        alive = false;
+      };
+    }
     const ro = new ResizeObserver(() => sync(false));
     ro.observe(el);
-    return () => ro.disconnect();
+    if (activeBtn) ro.observe(activeBtn);
+    return () => {
+      alive = false;
+      ro.disconnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
+  }, [activeId, items.map((i) => `${i.id}:${i.label}:${i.count ?? ''}`).join('|')]);
 
   return (
     <div className="tabs" role="tablist" ref={wrapRef}>
@@ -222,19 +239,36 @@ export function SlidingSeg<T extends string>({
   };
 
   useLayoutEffect(() => {
+    const activeBtn = btnRefs.current[activeId];
     sync(mountedRef.current);
+    if (mountedRef.current && activeBtn) {
+      activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+    }
     mountedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, items.length]);
+  }, [activeId, items.map((i) => `${i.id}:${i.label}`).join('|')]);
 
   useEffect(() => {
     const el = wrapRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
+    const activeBtn = btnRefs.current[activeId];
+    let alive = true;
+    document.fonts?.ready.then(() => {
+      if (alive) sync(false);
+    });
+    if (!el || typeof ResizeObserver === 'undefined') {
+      return () => {
+        alive = false;
+      };
+    }
     const ro = new ResizeObserver(() => sync(false));
     ro.observe(el);
-    return () => ro.disconnect();
+    if (activeBtn) ro.observe(activeBtn);
+    return () => {
+      alive = false;
+      ro.disconnect();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
+  }, [activeId, items.map((i) => `${i.id}:${i.label}`).join('|')]);
 
   return (
     <div className="seg" role="group" aria-label={ariaLabel} ref={wrapRef}>

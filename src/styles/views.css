@@ -715,29 +715,33 @@
   gap: 10px;
 }
 
-.dcard {
+.dcard,
+.deal-card {
   width: 100%;
   text-align: left;
   padding: 13px 14px;
   border-radius: var(--r-deal);
-  background: var(--glass-2);
+  background: var(--well);
   border: 1px solid var(--line);
   cursor: grab;
   transition: transform 0.15s var(--ease), border-color 0.15s var(--ease), background 0.15s var(--ease);
 }
 
-.dcard:hover {
-  background: var(--glass-3);
+.dcard:hover,
+.deal-card:hover {
+  background: var(--well-2);
   border-color: var(--line-2);
   transform: translateY(-1px);
 }
 
-.dcard:focus-visible {
+.dcard:focus-visible,
+.deal-card:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: 1px;
 }
 
-.dcard.is-dragging {
+.dcard.is-dragging,
+.deal-card.is-dragging {
   opacity: 0.45;
   transform: scale(0.98);
 }
@@ -2799,7 +2803,7 @@
   }
   .inline-search {
     flex: 1;
-    min-width: 0;
+    min-width: 140px;
   }
   .inline-search input {
     width: 100%;

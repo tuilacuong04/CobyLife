@@ -271,14 +271,16 @@ export function animateFlashPop(el: HTMLElement | null) {
 
 /**
  * Click icon bounce on segmented buttons and deal stage stepper.
+ * Only animates an inner <svg> icon — never scales text buttons (which would distort layout/pill bounds).
  */
 export function animateIconBounce(el: HTMLElement | null) {
   if (!el || isReducedMotion()) return;
-  const target = el.querySelector('svg') || el;
+  const target = el.querySelector('svg');
+  if (!target) return;
   gsap.fromTo(
     target,
-    { scale: 0.7 },
-    { scale: 1, duration: 0.55, ease: 'back.out(3)', overwrite: true, clearProps: 'transform' }
+    { scale: 0.72 },
+    { scale: 1, duration: 0.5, ease: 'back.out(3)', overwrite: true, clearProps: 'transform' }
   );
 }
 
@@ -310,15 +312,17 @@ export function spawnFloatUp(text: string, anchorRect?: DOMRect | null) {
 }
 
 /**
- * Asymmetric edge-stretching clip-path pill (leading edge 0.36s power3.out, trailing 0.55s power3.inOut).
+ * Asymmetric edge-stretching sliding pill (leading edge 0.36s power3.out, trailing 0.55s power3.inOut).
+ * Uses layout-space offsetLeft/offsetTop/offsetWidth/offsetHeight so it is 100% immune to CSS
+ * transforms and works accurately inside horizontally scrollable .seg / .tabs containers.
  */
-interface ClipBox {
-  t: number;
-  r: number;
-  b: number;
+interface PillBox {
   l: number;
+  r: number;
+  t: number;
+  h: number;
 }
-const clipStateMap = new WeakMap<HTMLElement, ClipBox>();
+const clipStateMap = new WeakMap<HTMLElement, PillBox>();
 
 export function animateClipPill(
   pill: HTMLElement | null,
@@ -328,21 +332,23 @@ export function animateClipPill(
   radius = 999
 ) {
   if (!pill || !activeEl || !container) return;
-  const cr = container.getBoundingClientRect();
-  const ar = activeEl.getBoundingClientRect();
-  if (cr.width === 0 || ar.width === 0) return;
+  const w = activeEl.offsetWidth;
+  const h = activeEl.offsetHeight;
+  if (w === 0 || h === 0) return;
 
-  const next: ClipBox = {
-    t: Math.max(0, ar.top - cr.top),
-    r: Math.max(0, cr.right - ar.right),
-    b: Math.max(0, cr.bottom - ar.bottom),
-    l: Math.max(0, ar.left - cr.left),
+  const next: PillBox = {
+    l: activeEl.offsetLeft,
+    r: activeEl.offsetLeft + w,
+    t: activeEl.offsetTop,
+    h,
   };
 
-  const applyClip = (box: ClipBox) => {
-    pill.style.clipPath = `inset(${box.t.toFixed(1)}px ${box.r.toFixed(1)}px ${box.b.toFixed(
-      1
-    )}px ${box.l.toFixed(1)}px round ${radius}px)`;
+  const applyBox = (box: PillBox) => {
+    pill.style.clipPath = '';
+    pill.style.borderRadius = `${radius}px`;
+    pill.style.transform = `translate3d(${box.l.toFixed(1)}px, ${box.t.toFixed(1)}px, 0)`;
+    pill.style.width = `${Math.max(0, box.r - box.l).toFixed(1)}px`;
+    pill.style.height = `${Math.max(0, box.h).toFixed(1)}px`;
   };
 
   const prev = clipStateMap.get(pill);
@@ -351,7 +357,7 @@ export function animateClipPill(
     clipStateMap.set(pill, snap);
     gsap.killTweensOf(prev || snap);
     pill.style.opacity = '1';
-    applyClip(snap);
+    applyBox(snap);
     return;
   }
 
@@ -361,9 +367,9 @@ export function animateClipPill(
   const movingRight = next.l > prev.l;
   const leadDur = 0.36;
   const trailDur = 0.55;
-  const crossDur = 0.45;
+  const crossDur = 0.4;
 
-  const onUpdate = () => applyClip(prev);
+  const onUpdate = () => applyBox(prev);
 
   // Horizontal leading edge stretches ahead, trailing edge catches up
   gsap.to(prev, {
@@ -380,7 +386,7 @@ export function animateClipPill(
   });
   gsap.to(prev, {
     t: next.t,
-    b: next.b,
+    h: next.h,
     duration: crossDur,
     ease: 'power3.inOut',
     onUpdate,
