@@ -1,3 +1,4 @@
+import React, { useLayoutEffect } from 'react';
 import gsap from 'gsap';
 import { Flip } from 'gsap/Flip';
 
@@ -408,4 +409,38 @@ export function animateErrorShake(el: HTMLElement | null) {
     { x: 0 },
     { keyframes: { x: [0, -8, 7, -5, 3, 0] }, duration: 0.42, ease: 'power2.out', clearProps: 'transform' }
   );
+}
+
+export function useStaggerEntrance(
+  containerRef: React.RefObject<HTMLElement | null>,
+  selector: string,
+  deps: React.DependencyList = []
+) {
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const nodes = el.querySelectorAll(selector);
+    if (!nodes.length) return;
+    if (selector.includes('kpi')) {
+      animateKpis(nodes, 0.08);
+    } else {
+      animateCards(nodes, { y: 14, stagger: 0.04, delay: 0.04 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+}
+
+export function useScrollReveal(
+  containerRef: React.RefObject<HTMLElement | null>,
+  selector: string,
+  deps: React.DependencyList = []
+) {
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const nodes = el.querySelectorAll(selector);
+    if (!nodes.length) return;
+    animateCards(nodes, { y: 18, stagger: 0.05, delay: 0.12 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
 }

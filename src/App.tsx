@@ -1,28 +1,25 @@
 import React from 'react';
-import { CrmProvider, useCrm } from './store/CrmContext';
+import { AppProvider, useApp } from './store/AppContext';
 import { Shell } from './components/Shell';
 import { Modals } from './components/Modals';
 import { Drawers } from './components/Drawers';
 import { Toasts } from './components/Toasts';
-import { AuthViews } from './components/AuthViews';
+import { PinLockView } from './components/PinLockView';
 import { SwapView } from './components/Motion';
 import { OverviewPage } from './components/pages/OverviewPage';
-import { PipelinePage } from './components/pages/PipelinePage';
-import { ContactsPage } from './components/pages/ContactsPage';
-import { ActivitiesPage } from './components/pages/ActivitiesPage';
-import { QuotesPage } from './components/pages/QuotesPage';
-import { TeamPage } from './components/pages/TeamPage';
-import { ReportsPage } from './components/pages/ReportsPage';
+import { GymWorkspace } from './components/pages/GymPage';
+import { TasksPage } from './components/pages/TasksPage';
+import { FinancePage } from './components/pages/FinancePage';
+import { ModulesPage } from './components/pages/ModulesPage';
 import { SettingsPage } from './components/pages/SettingsPage';
-import { HelpPage } from './components/pages/HelpPage';
 
 const AppContent: React.FC = () => {
-  const { state, space, route, navDir } = useCrm();
+  const { locked, route, navDir, gymMounted } = useApp();
 
-  if (!state.signedIn) {
+  if (locked) {
     return (
       <>
-        <AuthViews />
+        <PinLockView />
         <Toasts />
       </>
     );
@@ -31,17 +28,18 @@ const AppContent: React.FC = () => {
   return (
     <>
       <Shell>
-        <SwapView swapKey={`${space.id}-${route.page}`} direction={navDir} isPageSwap>
-          {route.page === 'overview' && <OverviewPage />}
-          {route.page === 'pipeline' && <PipelinePage />}
-          {route.page === 'contacts' && <ContactsPage />}
-          {route.page === 'activities' && <ActivitiesPage />}
-          {route.page === 'quotes' && <QuotesPage />}
-          {route.page === 'team' && <TeamPage />}
-          {route.page === 'reports' && <ReportsPage />}
-          {route.page === 'settings' && <SettingsPage />}
-          {route.page === 'help' && <HelpPage />}
-        </SwapView>
+        {/* Keep openGym persistently mounted once opened so active workouts & rest timers never reset */}
+        {gymMounted && <GymWorkspace active={route.page === 'gym'} />}
+
+        {route.page !== 'gym' && (
+          <SwapView swapKey={route.page} direction={navDir} isPageSwap>
+            {route.page === 'overview' && <OverviewPage />}
+            {route.page === 'tasks' && <TasksPage />}
+            {route.page === 'finance' && <FinancePage />}
+            {route.page === 'modules' && <ModulesPage />}
+            {route.page === 'settings' && <SettingsPage />}
+          </SwapView>
+        )}
       </Shell>
       <Drawers />
       <Modals />
@@ -51,9 +49,9 @@ const AppContent: React.FC = () => {
 };
 
 export const App: React.FC = () => (
-  <CrmProvider>
+  <AppProvider>
     <AppContent />
-  </CrmProvider>
+  </AppProvider>
 );
 
 export default App;

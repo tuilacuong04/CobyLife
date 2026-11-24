@@ -1,180 +1,164 @@
-import { Deal, DealStage, Quote, QuoteLine } from '../types';
+import { AccentTone, CurrencyCode, TaskCategory, TaskPriority, TaskStatus, WalletKind } from '../types';
 
-export const TODAY_ISO = '2026-11-17'; // Tue 17 Nov 2026
-
-export const STAGE_ORDER: DealStage[] = [
-  'lead',
-  'qualified',
-  'proposal',
-  'negotiation',
-  'won',
-  'lost',
-];
-
-export const OPEN_STAGES: DealStage[] = [
-  'lead',
-  'qualified',
-  'proposal',
-  'negotiation',
-];
-
-export const STAGE_META: Record<
-  DealStage,
-  { label: string; prob: number; tone: 'plain' | 'sand' | 'sky' | 'lime' | 'coral' }
-> = {
-  lead: { label: 'Lead', prob: 0.1, tone: 'plain' },
-  qualified: { label: 'Qualified', prob: 0.25, tone: 'sand' },
-  proposal: { label: 'Proposal', prob: 0.5, tone: 'sky' },
-  negotiation: { label: 'Negotiation', prob: 0.75, tone: 'sky' },
-  won: { label: 'Won', prob: 1, tone: 'lime' },
-  lost: { label: 'Lost', prob: 0, tone: 'coral' },
-};
-
-export function stageProbability(stage: DealStage): number {
-  return STAGE_META[stage].prob;
+export function localIsoDate(date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
-export function dealWeightedValue(deal: Deal): number {
-  return Math.round(deal.value * stageProbability(deal.stage));
+export function addDaysIso(baseIso: string, delta: number): string {
+  const [y, m, d] = baseIso.split('-').map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1);
+  dt.setDate(dt.getDate() + delta);
+  return localIsoDate(dt);
 }
 
-export function formatKrCompact(value: number): string {
-  const abs = Math.abs(value);
-  const sign = value < 0 ? '-' : '';
+export function currentMonthKey(date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function shiftMonthKey(monthKey: string, delta: number): string {
+  const [y, m] = monthKey.split('-').map(Number);
+  const dt = new Date(y, (m || 1) - 1 + delta, 1);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function formatMonthLabelVi(monthKey: string): string {
+  const [y, m] = monthKey.split('-').map(Number);
+  return `Tháng ${m}/${y}`;
+}
+
+export function formatMonthShortVi(monthKey: string): string {
+  const [, m] = monthKey.split('-').map(Number);
+  return `T${m}`;
+}
+
+export function formatShortDateVi(iso: string): string {
+  if (!iso) return 'Không hạn';
+  const [, m, d] = iso.split('-').map(Number);
+  if (!m || !d) return iso;
+  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+}
+
+export function formatFullDateVi(date = new Date()): string {
+  const days = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+  return `${days[date.getDay()]}, ${date.getDate()} tháng ${date.getMonth() + 1}, ${date.getFullYear()}`;
+}
+
+export function relativeDueLabel(iso: string, today = localIsoDate()): { text: string; overdue: boolean; isToday: boolean } {
+  if (!iso) return { text: 'Không hạn', overdue: false, isToday: false };
+  if (iso === today) return { text: 'Hôm nay', overdue: false, isToday: true };
+  if (iso === addDaysIso(today, 1)) return { text: 'Ngày mai', overdue: false, isToday: false };
+  if (iso === addDaysIso(today, -1)) return { text: 'Hôm qua', overdue: true, isToday: false };
+  if (iso < today) return { text: `Quá hạn (${formatShortDateVi(iso)})`, overdue: true, isToday: false };
+  return { text: formatShortDateVi(iso), overdue: false, isToday: false };
+}
+
+export function formatMoney(amount: number, currency: CurrencyCode = 'VND'): string {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+  if (currency === 'USD') {
+    const formatted = abs.toLocaleString('en-US', {
+      minimumFractionDigits: abs % 1 === 0 ? 0 : 2,
+      maximumFractionDigits: 2,
+    });
+    return `${sign}$${formatted}`;
+  }
+  return `${sign}${Math.round(abs).toLocaleString('vi-VN')} ₫`;
+}
+
+export function formatMoneyCompact(amount: number, currency: CurrencyCode = 'VND'): string {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+  if (currency === 'USD') {
+    if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+    if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
+    return `${sign}$${Math.round(abs)}`;
+  }
+  if (abs >= 1_000_000_000) return `${sign}${(abs / 1_000_000_000).toFixed(2)} tỷ`;
   if (abs >= 1_000_000) {
-    const m = abs / 1_000_000;
-    const formatted = m >= 10 ? m.toFixed(1) : m.toFixed(2);
-    return `${sign}kr ${formatted.replace(/\.00$/, '')}M`;
+    const v = abs / 1_000_000;
+    return `${sign}${v >= 10 ? v.toFixed(1) : v.toFixed(2)} tr`;
   }
-  if (abs >= 1_000) {
-    return `${sign}kr ${Math.round(abs / 1_000)}K`;
+  if (abs >= 1_000) return `${sign}${Math.round(abs / 1_000)}k`;
+  return `${sign}${Math.round(abs)} ₫`;
+}
+
+/**
+ * Parses Vietnamese / shorthand currency input:
+ * "50k" -> 50000, "1.5tr" / "1,5m" -> 1500000, "250.000" -> 250000
+ */
+export function parseSmartAmount(raw: string): number {
+  const cleaned = raw.trim().toLowerCase().replace(/\s+/g, '').replace(/[₫$]/g, '');
+  if (!cleaned) return 0;
+
+  const trMatch = cleaned.match(/^([\d.,]+)(tr|trieu|triệu|m)$/);
+  if (trMatch) {
+    const num = Number(trMatch[1].replace(',', '.'));
+    return Number.isFinite(num) ? Math.round(num * 1_000_000) : 0;
   }
-  return `${sign}kr ${Math.round(abs)}`;
+
+  const kMatch = cleaned.match(/^([\d.,]+)(k|ng|nghìn|nghin)$/);
+  if (kMatch) {
+    const num = Number(kMatch[1].replace(',', '.'));
+    return Number.isFinite(num) ? Math.round(num * 1_000) : 0;
+  }
+
+  // Handle thousand separators like 250.000 or 250,000
+  if (/^\d{1,3}([.,]\d{3})+$/.test(cleaned)) {
+    const digits = cleaned.replace(/[.,]/g, '');
+    return Number(digits) || 0;
+  }
+
+  const normalized = cleaned.replace(',', '.');
+  const val = Number(normalized);
+  return Number.isFinite(val) ? Math.round(val) : 0;
 }
 
-export function formatKrExact(value: number): string {
-  return `kr ${Math.round(value).toLocaleString('en-US')}`;
-}
-
-export function formatNumber(value: number): string {
-  return Math.round(value).toLocaleString('en-US');
-}
-
-export function quoteSubtotal(lines: QuoteLine[]): number {
-  return lines.reduce((sum, l) => sum + l.qty * l.unitPrice, 0);
-}
-
-export function quoteVat(lines: QuoteLine[]): number {
-  return Math.round(quoteSubtotal(lines) * 0.25);
-}
-
-export function quoteTotalWithVat(lines: QuoteLine[]): number {
-  return quoteSubtotal(lines) + quoteVat(lines);
-}
-
-export function quoteListAmount(q: Quote): number {
-  return quoteSubtotal(q.lines);
-}
-
-const MONTHS_SHORT = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
-const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-export function parseIsoDate(iso: string): Date {
-  const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, (m || 1) - 1, d || 1);
-}
-
-export function toIsoDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-export function addDays(iso: string, days: number): string {
-  const d = parseIsoDate(iso);
-  d.setDate(d.getDate() + days);
-  return toIsoDate(d);
-}
-
-export function diffDays(isoA: string, isoB: string): number {
-  const a = parseIsoDate(isoA).getTime();
-  const b = parseIsoDate(isoB).getTime();
-  return Math.round((a - b) / 86_400_000);
-}
-
-export function formatShortDate(iso: string): string {
-  const d = parseIsoDate(iso);
-  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
-}
-
-export function formatShortDateLower(iso: string): string {
-  const d = parseIsoDate(iso);
-  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()].toLowerCase()}`;
-}
-
-export function formatWeekdayShort(iso: string): string {
-  const d = parseIsoDate(iso);
-  return `${DAYS_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
-}
-
-export function formatRelativeTouch(iso: string): string {
-  const delta = diffDays(TODAY_ISO, iso);
-  if (delta <= 0) return 'Today';
-  if (delta === 1) return 'Yesterday';
-  if (delta < 30) return `${delta} days ago`;
-  return formatShortDate(iso);
-}
-
-export function formatRelativeActivityDay(iso: string): string {
-  const delta = diffDays(iso, TODAY_ISO);
-  if (delta === 0) return 'Today';
-  if (delta === -1) return 'Yesterday';
-  if (delta === 1) return 'Tomorrow';
-  if (delta < -1) return `${Math.abs(delta)} days ago`;
-  if (delta <= 7) return `In ${delta} days`;
-  return formatShortDate(iso);
-}
-
-export function formatCloseCountdown(iso: string): string {
-  const delta = diffDays(iso, TODAY_ISO);
-  if (delta < 0) return `${Math.abs(delta)}d overdue`;
-  if (delta === 0) return 'Today';
-  if (delta === 1) return 'Tomorrow';
-  return `In ${delta} days`;
+export function formatVolume(vol: number, unit: 'kg' | 'lb' = 'kg'): string {
+  if (vol >= 1000) return `${(vol / 1000).toFixed(1)}t ${unit}`;
+  return `${Math.round(vol).toLocaleString('vi-VN')} ${unit}`;
 }
 
 export function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
+  if (parts.length === 0) return 'ME';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-export function isCurrentMonth(iso: string): boolean {
-  return iso.startsWith(TODAY_ISO.slice(0, 7));
+export function greetingVi(date = new Date()): string {
+  const h = date.getHours();
+  if (h < 12) return 'Chào buổi sáng';
+  if (h < 18) return 'Chào buổi chiều';
+  return 'Chào buổi tối';
 }
 
-export function triggerDownload(filename: string, content: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+export const TASK_STATUS_META: Record<TaskStatus, { label: string; dot: string; tone: AccentTone }> = {
+  todo: { label: 'Cần làm', dot: 'stage-dot--sand', tone: 'sand' },
+  doing: { label: 'Đang làm', dot: 'stage-dot--sky', tone: 'sky' },
+  done: { label: 'Hoàn thành', dot: 'stage-dot--lime', tone: 'lime' },
+};
 
-export function toCsv(headers: string[], rows: (string | number)[][]): string {
-  const escape = (val: string | number) => {
-    const str = String(val);
-    if (/[",\n]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
-    return str;
-  };
-  return [headers.map(escape).join(','), ...rows.map((r) => r.map(escape).join(','))].join('\n');
-}
+export const TASK_PRIORITY_META: Record<TaskPriority, { label: string; pill: string }> = {
+  high: { label: 'Ưu tiên cao', pill: 'pill--coral' },
+  medium: { label: 'Trung bình', pill: 'pill--sand' },
+  low: { label: 'Thấp', pill: 'pill--muted' },
+};
+
+export const TASK_CATEGORY_META: Record<TaskCategory, { label: string; tone: AccentTone; pill: string }> = {
+  personal: { label: 'Cá nhân', tone: 'sky', pill: 'pill--sky' },
+  work: { label: 'Công việc', tone: 'sand', pill: 'pill--sand' },
+  health: { label: 'Gym & Sức khỏe', tone: 'lime', pill: 'pill--lime' },
+  study: { label: 'Học tập', tone: 'sky', pill: 'pill--sky' },
+  finance: { label: 'Tài chính', tone: 'coral', pill: 'pill--coral' },
+};
+
+export const WALLET_KIND_LABEL: Record<WalletKind, string> = {
+  cash: 'Tiền mặt',
+  bank: 'Ngân hàng',
+  ewallet: 'Ví điện tử',
+  card: 'Thẻ tín dụng',
+  savings: 'Tiết kiệm',
+};

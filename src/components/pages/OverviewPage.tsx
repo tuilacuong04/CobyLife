@@ -1,493 +1,604 @@
-import React, { useLayoutEffect, useRef } from 'react';
-import { useCrm } from '../../store/CrmContext';
-import { DealStage } from '../../types';
+import React, { useMemo, useRef } from 'react';
+import { APP_MODULES } from '../../modules/registry';
+import { useApp } from '../../store/AppContext';
 import {
-  dealWeightedValue,
-  diffDays,
-  formatCloseCountdown,
-  formatKrCompact,
-  formatShortDateLower,
-  formatWeekdayShort,
-  isCurrentMonth,
-  OPEN_STAGES,
-  STAGE_META,
-  TODAY_ISO,
+  currentMonthKey,
+  formatFullDateVi,
+  formatMoney,
+  formatMoneyCompact,
+  formatShortDateVi,
+  formatVolume,
+  greetingVi,
+  localIsoDate,
+  relativeDueLabel,
+  TASK_CATEGORY_META,
+  TASK_PRIORITY_META,
 } from '../../utils/format';
-import { animateCards, animateKpis, dur, gsap, isReducedMotion } from '../../utils/motion';
-import { RepAvatar } from '../Avatar';
-import { AnimatedNumber, AnimatedTitle, MagneticButton } from '../Motion';
+import { useScrollReveal, useStaggerEntrance } from '../../utils/motion';
+import { MagneticButton } from '../Motion';
 import {
-  IconActivityKind,
+  IconArrowDownLeft,
+  IconArrowUpRight,
   IconCheck,
   IconChevronRight,
+  IconDumbbell,
+  IconFlame,
+  IconModuleGlyph,
   IconPlus,
-  IconReports,
-  IconTarget,
+  IconTasks,
+  IconWallet,
 } from '../Icons';
 
-const FUNNEL_STAGES: DealStage[] = ['lead', 'qualified', 'proposal', 'negotiation', 'won'];
-
 export const OverviewPage: React.FC = () => {
-  const { state, space, navigate, openDrawer, openModal, toggleActivityDone } = useCrm();
-  const rootRef = useRef<HTMLDivElement>(null);
+  const {
+    state,
+    gym,
+    walletBalances,
+    navigate,
+    openGymView,
+    openModal,
+    openDrawer,
+    toggleTaskDone,
+  } = useApp();
 
-  const firstName = state.settings.profile.name.trim().split(/\s+/)[0] || 'there';
-  const companyMap = new Map(space.companies.map((c) => [c.id, c.name]));
+  const kpiRef = useRef<HTMLDivElement>(null);
+  const bentoRef = useRef<HTMLDivElement>(null);
 
-  const openDeals = space.deals.filter((d) => OPEN_STAGES.includes(d.stage));
-  const wonThisMonthDeals = space.deals.filter(
-    (d) => d.stage === 'won' && isCurrentMonth(d.closeDate)
+  useStaggerEntrance(kpiRef, '.kpi-card', []);
+  useScrollReveal(bentoRef, '.bento-card', []);
+
+  const today = localIsoDate();
+  const thisMonth = currentMonthKey();
+  const { currency, profile } = state.settings;
+
+  // Tasks KPIs
+  const tasksToday = useMemo(
+    () =>
+      state.tasks
+        .filter((t) => t.dueDate && t.dueDate <= today)
+        .sort((a, b) => {
+          if (a.status === 'done' && b.status !== 'done') return 1;
+          if (a.status !== 'done' && b.status === 'done') return -1;
+          if (a.pinned && !b.pinned) return -1;
+          if (!a.pinned && b.pinned) return 1;
+          return (a.dueDate || '9999').localeCompare(b.dueDate || '9999');
+        }),
+    [state.tasks, today]
   );
-  const allClosedDeals = space.deals.filter((d) => d.stage === 'won' || d.stage === 'lost');
-  const wonDealsCount = allClosedDeals.filter((d) => d.stage === 'won').length;
+  const openTasksToday = tasksToday.filter((t) => t.status !== 'done');
+  const overdueCount = openTasksToday.filter((t) => t.dueDate && t.dueDate < today).length;
+  const doneTasksToday = tasksToday.filter((t) => t.status === 'done').length;
 
-  const wonThisMonth = wonThisMonthDeals.reduce((s, d) => s + d.value, 0);
-  const openPipeline = openDeals.reduce((s, d) => s + d.value, 0);
-  const weightedForecast = openDeals.reduce((s, d) => s + dealWeightedValue(d), 0);
-  const winRate =
-    allClosedDeals.length > 0 ? Math.round((wonDealsCount / allClosedDeals.length) * 100) : 0;
-
-  const targetPct =
-    space.monthlyTarget > 0 ? Math.round((wonThisMonth / space.monthlyTarget) * 100) : 0;
-  const lastMonthWon = space.history[space.history.length - 1]?.won || 1;
-  const momDelta = Math.round(((wonThisMonth - lastMonthWon) / lastMonthWon) * 100);
-
-  const overdueCount = space.activities.filter((a) => !a.done && a.date < TODAY_ISO).length;
-  const todayOpen = space.activities
-    .filter((a) => !a.done && a.date === TODAY_ISO)
-    .sort((a, b) => a.time.localeCompare(b.time));
-
-  const revenueBars = [
-    ...space.history.map((h) => ({ label: h.label, value: h.won, isCurrent: false })),
-    { label: 'Nov', value: wonThisMonth, isCurrent: true },
-  ];
-  const maxBar = Math.max(space.monthlyTarget * 1.15, ...revenueBars.map((b) => b.value), 1);
-  const targetLineBottomPct = Math.min(96, (space.monthlyTarget / maxBar) * 100);
-
-  const funnelRows = FUNNEL_STAGES.map((st) => {
-    const deals = space.deals.filter((d) =>
-      st === 'won' ? d.stage === 'won' && isCurrentMonth(d.closeDate) : d.stage === st
-    );
-    const total = deals.reduce((s, d) => s + d.value, 0);
-    return { stage: st, count: deals.length, total };
-  });
-  const maxFunnel = Math.max(...funnelRows.map((r) => r.total), 1);
-
-  const nextBest =
-    [...openDeals]
-      .filter((d) => d.stage === 'negotiation')
-      .sort((a, b) => b.value - a.value)[0] ||
-    [...openDeals].sort((a, b) => b.value - a.value)[0];
-
-  const leaderboard = space.reps
-    .map((rep) => {
-      const won = wonThisMonthDeals
-        .filter((d) => d.ownerId === rep.id)
-        .reduce((s, d) => s + d.value, 0);
-      const pct = rep.quota > 0 ? Math.round((won / rep.quota) * 100) : 0;
-      return { rep, won, pct };
-    })
-    .sort((a, b) => b.won - a.won);
-
-  const closingSoon = [...openDeals]
-    .filter((d) => diffDays(d.closeDate, TODAY_ISO) <= 45)
-    .sort((a, b) => a.closeDate.localeCompare(b.closeDate))
-    .slice(0, 6);
-
-  const funnelColor = (st: DealStage) => {
-    if (st === 'won') return 'var(--accent)';
-    if (st === 'proposal' || st === 'negotiation') return 'var(--sky)';
-    if (st === 'qualified') return 'var(--sand)';
-    return 'var(--faint)';
-  };
-
-  // Exact Sylva GSAP entrance choreography
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root || isReducedMotion()) return;
-    const ctx = gsap.context(() => {
-      animateKpis(root.querySelectorAll('.kpi-card'), 0.15);
-      animateCards(root.querySelectorAll('.bento > .card'), { delay: 0.3, stagger: 0.05 });
-
-      const revFills = root.querySelectorAll('.rev__fill');
-      if (revFills.length) {
-        gsap.from(revFills, {
-          scaleY: 0,
-          duration: dur(0.9),
-          ease: 'expo.out',
-          delay: dur(0.55),
-          stagger: dur(0.035),
-        });
+  // Finance KPIs
+  const financeMetrics = useMemo(() => {
+    let monthExpense = 0;
+    let monthIncome = 0;
+    const spentByCat: Record<string, number> = {};
+    for (const tx of state.finance.transactions) {
+      if (!tx.date.startsWith(thisMonth)) continue;
+      if (tx.type === 'expense') {
+        monthExpense += tx.amount;
+        spentByCat[tx.categoryId] = (spentByCat[tx.categoryId] || 0) + tx.amount;
+      } else if (tx.type === 'income') {
+        monthIncome += tx.amount;
       }
+    }
+    const totalBalance = Object.values(walletBalances).reduce((sum, v) => sum + v, 0);
+    const totalBudget = state.finance.budgets.reduce((sum, b) => sum + b.monthlyLimit, 0);
+    const budgetPct = totalBudget > 0 ? Math.round((monthExpense / totalBudget) * 100) : 0;
+    const recent = [...state.finance.transactions]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 5);
 
-      const funnelFills = root.querySelectorAll('.funnel__fill');
-      if (funnelFills.length) {
-        gsap.from(funnelFills, {
-          scaleX: 0,
-          duration: dur(0.9),
-          ease: 'expo.out',
-          delay: dur(0.6),
-          stagger: dur(0.06),
-        });
-      }
-    }, root);
-    return () => ctx.revert();
-  }, [space.id]);
+    const catMap = new Map(state.finance.categories.map((c) => [c.id, c]));
+    const topBudgets = state.finance.budgets
+      .map((b) => {
+        const spent = spentByCat[b.categoryId] || 0;
+        const pct = b.monthlyLimit > 0 ? Math.round((spent / b.monthlyLimit) * 100) : 0;
+        return {
+          ...b,
+          spent,
+          pct,
+          category: catMap.get(b.categoryId),
+        };
+      })
+      .sort((a, b) => b.pct - a.pct)
+      .slice(0, 4);
+
+    return {
+      monthExpense,
+      monthIncome,
+      totalBalance,
+      totalBudget,
+      budgetPct,
+      recent,
+      topBudgets,
+      catMap,
+    };
+  }, [state.finance, walletBalances, thisMonth]);
+
+  const gymWeekPct = Math.min(
+    100,
+    Math.round((gym.workoutsThisWeek / Math.max(gym.weekTarget, 1)) * 100)
+  );
 
   return (
-    <div ref={rootRef}>
+    <>
       <div className="phead">
         <div>
-          <AnimatedTitle text={`Good morning, ${firstName}`} mark="lime" animKey={`${space.id}-ov`} />
+          <h1 className="phead__title">
+            {greetingVi()}, {profile.name}
+          </h1>
           <p className="phead__sub">
-            {space.name} · {formatWeekdayShort(TODAY_ISO)} · {overdueCount} overdue,{' '}
-            {todayOpen.length} activities today
+            {formatFullDateVi()} · {openTasksToday.length} task cần xử lý ·{' '}
+            {gym.activeWorkout
+              ? `Đang tập: ${gym.activeWorkout.name}`
+              : gym.todayRoutine
+                ? `Lịch Gym: ${gym.todayRoutine.name}`
+                : 'Sẵn sàng cho ngày mới'}
           </p>
         </div>
-
         <div className="phead__actions">
-          <button type="button" className="btn btn--glass" onClick={() => navigate('reports')}>
-            <IconReports size={16} />
-            <span>Reports</span>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => openModal({ kind: 'new-tx', defaultType: 'expense' })}
+          >
+            <IconWallet size={15} />
+            Ghi chi tiêu
           </button>
           <MagneticButton
             type="button"
             className="btn btn--primary"
-            onClick={() => openModal({ kind: 'new-deal' })}
+            onClick={() => openGymView('#/home')}
           >
-            <IconPlus size={16} />
-            <span>New deal</span>
+            <IconDumbbell size={15} />
+            {gym.activeWorkout ? 'Tiếp tục buổi tập' : 'Vào tập Gym'}
           </MagneticButton>
         </div>
       </div>
 
-      {/* 4 Tinted KPI Cards */}
-      <section className="kpi-grid" aria-label="Key metrics">
-        <div className="card kpi-card tone-tile--sky">
-          <div className="kpi-card__label">Won this month</div>
+      {/* 4 Unified Live KPI Cards */}
+      <div ref={kpiRef} className="kpi-grid">
+        <div
+          className="card kpi-card tone-tile--lime"
+          role="button"
+          tabIndex={0}
+          style={{ cursor: 'pointer' }}
+          onClick={() => openGymView('#/home')}
+        >
+          <div className="kpi-card__label">Gym tuần này (openGym)</div>
           <div className="kpi-card__value">
-            <AnimatedNumber value={wonThisMonth} format={formatKrCompact} />
+            {gym.available ? `${gym.workoutsThisWeek}/${gym.weekTarget} buổi` : 'Sẵn sàng'}
           </div>
-          <div
-            className="meter"
-            role="meter"
-            aria-valuenow={targetPct}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
+          <div className="meter">
             <div
               className="meter__fill"
-              style={{ transform: `scaleX(${Math.min(1, targetPct / 100)})` }}
+              style={{ transform: `scaleX(${Math.max(0.06, gymWeekPct / 100)})` }}
+            />
+          </div>
+          <div className="kpi-card__meta">
+            {gym.available ? (
+              <>
+                <span className="kpi-card__delta">
+                  <IconFlame size={13} style={{ verticalAlign: '-2px', marginRight: 3 }} />
+                  {gym.streakWeeks} tuần liên tiếp
+                </span>
+                <span>· {formatVolume(gym.totalVolumeThisWeek, gym.unit)}</span>
+              </>
+            ) : (
+              <span>Nhấn để khởi chạy openGym lần đầu</span>
+            )}
+          </div>
+        </div>
+
+        <div
+          className="card kpi-card tone-tile--sky"
+          role="button"
+          tabIndex={0}
+          style={{ cursor: 'pointer' }}
+          onClick={() => navigate('tasks', 'agenda')}
+        >
+          <div className="kpi-card__label">Task hôm nay</div>
+          <div className="kpi-card__value">
+            {doneTasksToday}/{tasksToday.length}
+          </div>
+          <div className="kpi-card__meta">
+            {overdueCount > 0 ? (
+              <span className="kpi-card__delta is-neg">{overdueCount} quá hạn</span>
+            ) : (
+              <span className="kpi-card__delta">Đúng tiến độ</span>
+            )}
+            <span>· {state.tasks.filter((t) => t.status !== 'done').length} đang mở</span>
+          </div>
+        </div>
+
+        <div
+          className="card kpi-card tone-tile--coral"
+          role="button"
+          tabIndex={0}
+          style={{ cursor: 'pointer' }}
+          onClick={() => navigate('finance', 'overview')}
+        >
+          <div className="kpi-card__label">Chi tiêu tháng này</div>
+          <div className="kpi-card__value">
+            {formatMoneyCompact(financeMetrics.monthExpense, currency)}
+          </div>
+          <div className="meter">
+            <div
+              className="meter__fill"
+              style={{
+                transform: `scaleX(${Math.min(1, financeMetrics.budgetPct / 100)})`,
+                background: financeMetrics.budgetPct > 100 ? 'var(--bad)' : 'var(--text)',
+              }}
             />
           </div>
           <div className="kpi-card__meta">
             <span>
-              {targetPct}% of {formatKrCompact(space.monthlyTarget)} target ·
+              {financeMetrics.totalBudget > 0
+                ? `${financeMetrics.budgetPct}% ngân sách tháng`
+                : 'Chưa đặt hạn mức'}
             </span>
-            <span className={`kpi-card__delta ${momDelta < 0 ? 'is-neg' : ''}`}>
-              {momDelta >= 0 ? `↗ +${momDelta}%` : `↘ ${momDelta}%`} vs last month
-            </span>
           </div>
         </div>
 
-        <div className="card kpi-card tone-tile--lime">
-          <div className="kpi-card__label">Open pipeline</div>
+        <div
+          className="card kpi-card"
+          role="button"
+          tabIndex={0}
+          style={{ cursor: 'pointer' }}
+          onClick={() => navigate('finance', 'wallets')}
+        >
+          <div className="kpi-card__label">Tổng số dư các ví</div>
           <div className="kpi-card__value">
-            <AnimatedNumber value={openPipeline} format={formatKrCompact} />
-          </div>
-          <div className="kpi-card__meta">{openDeals.length} open deals</div>
-        </div>
-
-        <div className="card kpi-card tone-tile--coral">
-          <div className="kpi-card__label">Weighted forecast</div>
-          <div className="kpi-card__value">
-            <AnimatedNumber value={weightedForecast} format={formatKrCompact} />
-          </div>
-          <div className="kpi-card__meta">by stage probability</div>
-        </div>
-
-        <div className="card kpi-card">
-          <div className="kpi-card__label">Win rate</div>
-          <div className="kpi-card__value">
-            <AnimatedNumber value={winRate} format={(n) => `${Math.round(n)}%`} />
+            {formatMoneyCompact(financeMetrics.totalBalance, currency)}
           </div>
           <div className="kpi-card__meta">
-            {wonDealsCount} of {allClosedDeals.length} closed deals won
+            <span className="kpi-card__delta">
+              +{formatMoneyCompact(financeMetrics.monthIncome, currency)} thu tháng này
+            </span>
+            <span>· {state.finance.wallets.length} ví</span>
           </div>
         </div>
-      </section>
+      </div>
 
-      {/* Main Bento Grid */}
-      <div className="bento">
-        <section className="card col-8">
+      {/* Main Personal OS Bento Grid */}
+      <div ref={bentoRef} className="bento">
+        {/* Left: openGym Live Command Card */}
+        <div className="card bento-card col-6">
           <div className="card__head">
             <div>
-              <h2 className="card__title">Revenue won</h2>
-              <p className="card__sub">Last 12 months against the monthly target</p>
+              <h2 className="card__title">Gym · openGym Tracker</h2>
+              <p className="card__sub">
+                Tích hợp đầy đủ 5.600+ bài tập, lịch tập, bản đồ cơ & tiến trình tăng tạ
+              </p>
             </div>
-            <div className="chart-legend">
-              <span className="legend-item">
-                <span className="legend-swatch" />
-                Won
-              </span>
-              <span className="legend-item">
-                <span className="legend-dash" />
-                Target {formatKrCompact(space.monthlyTarget)}
-              </span>
+            <button
+              type="button"
+              className="card__link"
+              onClick={() => openGymView('#/home')}
+            >
+              Mở openGym <IconChevronRight size={14} />
+            </button>
+          </div>
+
+          <div className="gym-summary-grid">
+            <div className="gym-stat-box">
+              <div className="gym-stat-box__label">Lịch tập tiếp theo</div>
+              <div className="gym-stat-box__val">
+                {gym.todayRoutine ? gym.todayRoutine.name : 'Push / Pull / Legs'}
+              </div>
+              <div className="gym-stat-box__sub">
+                {gym.todayRoutine
+                  ? `${gym.todayRoutine.exerciseCount} bài tập đã lên lịch`
+                  : 'Mở openGym để tạo hoặc chọn lịch'}
+              </div>
+            </div>
+
+            <div className="gym-stat-box">
+              <div className="gym-stat-box__label">Cân nặng gần nhất</div>
+              <div className="gym-stat-box__val">
+                {gym.latestBodyweight
+                  ? `${gym.latestBodyweight.weight} ${gym.unit}`
+                  : 'Chưa ghi nhận'}
+              </div>
+              <div className="gym-stat-box__sub">
+                {gym.latestBodyweight?.target
+                  ? `Mục tiêu: ${gym.latestBodyweight.target} ${gym.unit}`
+                  : gym.lastWorkout
+                    ? `Buổi gần nhất: ${gym.lastWorkout.name} (${formatShortDateVi(gym.lastWorkout.date)})`
+                    : 'Đồng bộ trực tiếp với openGym'}
+              </div>
             </div>
           </div>
 
-          <div className="bar-chart">
-            <div className="bar-chart__plot">
-              <div
-                className="bar-chart__target"
-                style={{ bottom: `calc(${targetLineBottomPct}% + 22px)` }}
-                title={`Monthly target: ${formatKrCompact(space.monthlyTarget)}`}
-              />
-              {revenueBars.map((bar) => {
-                const ratio = Math.max(0.04, bar.value / maxBar);
+          <div className="gym-shortcuts">
+            {[
+              { label: 'Bắt đầu tập', path: '#/home' },
+              { label: 'Lịch tập (Plan)', path: '#/plan' },
+              { label: 'Bản đồ cơ bắp', path: '#/muscles' },
+              { label: 'Thống kê & 1RM', path: '#/stats' },
+              { label: 'Thư viện 5.6K bài', path: '#/library' },
+              { label: 'Số đo cơ thể', path: '#/measurements' },
+            ].map((item) => (
+              <button
+                key={item.path}
+                type="button"
+                className="chip"
+                onClick={() => openGymView(item.path)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Right: Today's Tasks */}
+        <div className="card bento-card col-6">
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Task hôm nay & quá hạn</h2>
+              <p className="card__sub">
+                {openTasksToday.length > 0
+                  ? `Còn ${openTasksToday.length} việc cần hoàn thành`
+                  : 'Bạn đã hoàn thành hết việc hôm nay'}
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                type="button"
+                className="chip"
+                style={{ height: 28 }}
+                onClick={() => openModal({ kind: 'new-task' })}
+              >
+                <IconPlus size={13} /> Thêm
+              </button>
+              <button
+                type="button"
+                className="card__link"
+                onClick={() => navigate('tasks', 'agenda')}
+              >
+                Tất cả <IconChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+
+          {tasksToday.length === 0 ? (
+            <div className="empty-state" style={{ padding: '24px 12px' }}>
+              Không có task nào đến hạn hôm nay.
+            </div>
+          ) : (
+            <div className="stack-list">
+              {tasksToday.slice(0, 5).map((task) => {
+                const due = relativeDueLabel(task.dueDate, today);
+                const done = task.status === 'done';
                 return (
-                  <div
-                    key={bar.label}
-                    className="bar-col"
-                    title={`${bar.label}: ${formatKrCompact(bar.value)}`}
-                  >
-                    <div className="bar-col__track">
-                      <div
-                        className={`bar-col__fill rev__fill ${bar.isCurrent ? 'is-accent' : ''}`}
-                        style={{ transform: `scaleY(${ratio.toFixed(4)})` }}
-                      />
+                  <div key={task.id} className="act-row">
+                    <button
+                      type="button"
+                      className={`check-btn ${done ? 'is-done' : ''}`}
+                      onClick={(e) => toggleTaskDone(task.id, e.currentTarget)}
+                      aria-label={`Hoàn thành ${task.title}`}
+                    >
+                      <IconCheck size={12} />
+                    </button>
+                    <div
+                      className="act-row__body"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => openDrawer({ kind: 'task', id: task.id })}
+                    >
+                      <div className={`act-row__title ${done ? 'is-done' : ''}`}>
+                        {task.title}
+                      </div>
+                      <div className="act-row__meta">
+                        <span>{TASK_CATEGORY_META[task.category].label}</span>
+                        {task.dueTime && <span>· {task.dueTime}</span>}
+                        {due.overdue && !done && (
+                          <span style={{ color: 'var(--bad)', fontWeight: 700 }}>
+                            · {due.text}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span className={`bar-col__label ${bar.isCurrent ? 'is-accent' : ''}`}>
-                      {bar.label}
+                    <span className={`pill ${TASK_PRIORITY_META[task.priority].pill}`}>
+                      {task.priority === 'high' ? 'Cao' : task.priority === 'medium' ? 'TB' : 'Thấp'}
                     </span>
                   </div>
                 );
               })}
             </div>
-          </div>
-        </section>
+          )}
+        </div>
 
-        <section className="card col-4">
+        {/* Bottom Left: Recent Expenses & Budgets */}
+        <div className="card bento-card col-7">
           <div className="card__head">
             <div>
-              <h2 className="card__title">Pipeline by stage</h2>
-              <p className="card__sub">Value in each stage</p>
+              <h2 className="card__title">Giao dịch & Ngân sách tháng</h2>
+              <p className="card__sub">
+                Thu {formatMoney(financeMetrics.monthIncome, currency)} · Chi{' '}
+                {formatMoney(financeMetrics.monthExpense, currency)}
+              </p>
             </div>
-            <button
-              type="button"
-              className="card__link"
-              onClick={() => navigate('pipeline', 'board')}
-            >
-              Board <IconChevronRight size={14} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                type="button"
+                className="chip"
+                style={{ height: 28 }}
+                onClick={() => openModal({ kind: 'new-tx', defaultType: 'expense' })}
+              >
+                <IconPlus size={13} /> Ghi chi
+              </button>
+              <button
+                type="button"
+                className="card__link"
+                onClick={() => navigate('finance', 'overview')}
+              >
+                Chi tiết <IconChevronRight size={14} />
+              </button>
+            </div>
           </div>
 
-          <div className="funnel-list">
-            {funnelRows.map((row) => {
-              const ratio = row.total > 0 ? Math.max(0.08, row.total / maxFunnel) : 0;
-              return (
-                <button
-                  key={row.stage}
-                  type="button"
-                  className="funnel-row"
-                  onClick={() => navigate('pipeline', 'list', { stage: row.stage })}
-                >
-                  <div>
-                    <div className="funnel-row__name">{STAGE_META[row.stage].label}</div>
-                    <div className="funnel-row__count">
-                      {row.count} {row.count === 1 ? 'deal' : 'deals'}
-                    </div>
-                  </div>
-                  <div className="funnel-row__track">
+          <div className="overview-fin-split">
+            <div className="stack-list">
+              {financeMetrics.recent.length === 0 ? (
+                <div className="empty-state" style={{ padding: '20px 10px' }}>
+                  Chưa có giao dịch nào.
+                </div>
+              ) : (
+                financeMetrics.recent.map((tx) => {
+                  const cat = financeMetrics.catMap.get(tx.categoryId);
+                  return (
                     <div
-                      className="funnel-row__fill funnel__fill"
+                      key={tx.id}
+                      className="tx-mini-row"
+                      onClick={() => openDrawer({ kind: 'transaction', id: tx.id })}
+                    >
+                      <span
+                        className={`tx-icon ${
+                          tx.type === 'income'
+                            ? 'tx-icon--in'
+                            : tx.type === 'expense'
+                              ? 'tx-icon--out'
+                              : 'tx-icon--move'
+                        }`}
+                      >
+                        {tx.type === 'income' ? (
+                          <IconArrowDownLeft size={14} />
+                        ) : (
+                          <IconArrowUpRight size={14} />
+                        )}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="tx-mini-row__title">
+                          {tx.note || cat?.name || 'Giao dịch'}
+                        </div>
+                        <div className="tx-mini-row__sub">
+                          {tx.type === 'transfer' ? 'Chuyển ví' : cat?.name} ·{' '}
+                          {formatShortDateVi(tx.date)}
+                        </div>
+                      </div>
+                      <div
+                        className={`tx-mini-row__amt ${
+                          tx.type === 'income'
+                            ? 'is-in'
+                            : tx.type === 'expense'
+                              ? 'is-out'
+                              : ''
+                        }`}
+                      >
+                        {tx.type === 'income' ? '+' : tx.type === 'expense' ? '-' : ''}
+                        {formatMoneyCompact(tx.amount, currency)}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="stack-list">
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Hạn mức nổi bật
+              </div>
+              {financeMetrics.topBudgets.map((b) => (
+                <div key={b.categoryId} className="budget-mini">
+                  <div className="budget-mini__top">
+                    <span>{b.category?.name || b.categoryId}</span>
+                    <span
                       style={{
-                        transform: `scaleX(${ratio.toFixed(4)})`,
-                        background: funnelColor(row.stage),
+                        fontWeight: 700,
+                        color:
+                          b.pct >= 100
+                            ? 'var(--bad)'
+                            : b.pct >= 80
+                              ? 'var(--sand)'
+                              : 'var(--text)',
+                      }}
+                    >
+                      {b.pct}%
+                    </span>
+                  </div>
+                  <div className="meter" style={{ margin: '6px 0 4px', height: 6 }}>
+                    <div
+                      className="meter__fill"
+                      style={{
+                        transform: `scaleX(${Math.min(1, b.pct / 100)})`,
+                        background:
+                          b.pct >= 100
+                            ? 'var(--bad)'
+                            : b.pct >= 80
+                              ? 'var(--sand)'
+                              : 'var(--accent)',
                       }}
                     />
                   </div>
-                  <div className="funnel-row__val">{formatKrCompact(row.total)}</div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        <section
-          className="card col-3 tone-tile--lime"
-          style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
-        >
-          <div>
-            <div className="nbm-eyebrow">
-              <IconTarget size={14} />
-              Next best move
-            </div>
-            {nextBest ? (
-              <>
-                <h2 className="nbm-title">{nextBest.title}</h2>
-                <div className="nbm-meta">
-                  {companyMap.get(nextBest.companyId)} · in{' '}
-                  {STAGE_META[nextBest.stage].label.toLowerCase()} · closes{' '}
-                  {formatShortDateLower(nextBest.closeDate)}
-                </div>
-                <div className="nbm-val">
-                  <AnimatedNumber value={nextBest.value} format={formatKrCompact} />
-                </div>
-              </>
-            ) : (
-              <p className="card__sub" style={{ marginTop: 12 }}>
-                All open deals are closed!
-              </p>
-            )}
-          </div>
-          {nextBest && (
-            <button
-              type="button"
-              className="card__link"
-              style={{ color: 'var(--text)' }}
-              onClick={() => openDrawer({ kind: 'deal', id: nextBest.id })}
-            >
-              Open deal <IconChevronRight size={14} />
-            </button>
-          )}
-        </section>
-
-        <section className="card col-4">
-          <div className="card__head">
-            <div>
-              <h2 className="card__title">Today</h2>
-              <p className="card__sub">{todayOpen.length} to do</p>
-            </div>
-            <button
-              type="button"
-              className="card__link"
-              onClick={() => navigate('activities', 'agenda')}
-            >
-              Agenda <IconChevronRight size={14} />
-            </button>
-          </div>
-
-          {todayOpen.length === 0 ? (
-            <div style={{ padding: '18px 0', color: 'var(--faint)', fontSize: 13.5 }}>
-              All of today&apos;s activities are done.
-            </div>
-          ) : (
-            <div className="act-list">
-              {todayOpen.map((act) => {
-                const deal = space.deals.find((d) => d.id === act.dealId);
-                const comp = deal ? companyMap.get(deal.companyId) : undefined;
-                return (
-                  <div key={act.id} className="act-row">
-                    <button
-                      type="button"
-                      className="check-btn"
-                      onClick={() => toggleActivityDone(act.id)}
-                      aria-label={`Complete ${act.title}`}
-                    >
-                      <IconCheck size={13} />
-                    </button>
-                    <div className="act-row__body">
-                      <div
-                        className="act-row__title"
-                        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-                      >
-                        <span style={{ color: 'var(--muted)', display: 'inline-grid' }}>
-                          <IconActivityKind type={act.type} size={13} />
-                        </span>
-                        <span>{act.title}</span>
-                      </div>
-                      <div className="act-row__sub">
-                        {act.time}
-                        {comp ? ` · ${comp}` : ''}
-                      </div>
-                    </div>
+                  <div className="budget-mini__sub">
+                    {formatMoneyCompact(b.spent, currency)} / {formatMoneyCompact(b.monthlyLimit, currency)}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section className="card col-5">
-          <div className="card__head">
-            <div>
-              <h2 className="card__title">Leaderboard</h2>
-              <p className="card__sub">Won this month</p>
-            </div>
-            <button type="button" className="card__link" onClick={() => navigate('team')}>
-              Team <IconChevronRight size={14} />
-            </button>
-          </div>
-
-          <div className="leader-list">
-            {leaderboard.map((row, idx) => (
-              <button
-                key={row.rep.id}
-                type="button"
-                className="leader-row"
-                style={{ width: '100%', textAlign: 'left' }}
-                onClick={() => navigate('pipeline', 'board', { owner: row.rep.id })}
-              >
-                <span className={`leader-rank ${idx === 0 ? 'is-top' : ''}`}>{idx + 1}</span>
-                <RepAvatar src={row.rep.avatar} name={row.rep.name} size={34} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{row.rep.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--faint)' }}>{row.pct}% of quota</div>
                 </div>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{formatKrCompact(row.won)}</div>
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="card col-12">
-          <div className="card__head">
-            <div>
-              <h2 className="card__title">Closing soon</h2>
-              <p className="card__sub">Open deals expected to close in the coming weeks</p>
-            </div>
-            <button
-              type="button"
-              className="card__link"
-              onClick={() => navigate('pipeline', 'forecast')}
-            >
-              Forecast <IconChevronRight size={14} />
-            </button>
-          </div>
-
-          {closingSoon.length === 0 ? (
-            <div style={{ color: 'var(--faint)', fontSize: 13.5 }}>No upcoming closes.</div>
-          ) : (
-            <div className="closing-grid">
-              {closingSoon.map((deal) => (
-                <button
-                  key={deal.id}
-                  type="button"
-                  className="closing-item"
-                  onClick={() => openDrawer({ kind: 'deal', id: deal.id })}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{deal.title}</div>
-                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                      {companyMap.get(deal.companyId)} · {STAGE_META[deal.stage].label}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>
-                      {formatKrCompact(deal.value)}
-                    </div>
-                    <div style={{ fontSize: 11.5, color: 'var(--accent-ink)', fontWeight: 600 }}>
-                      {formatCloseCountdown(deal.closeDate)}
-                    </div>
-                  </div>
-                </button>
               ))}
             </div>
-          )}
-        </section>
+          </div>
+        </div>
+
+        {/* Bottom Right: Extensible Module Hub */}
+        <div className="card bento-card col-5">
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Hệ sinh thái cá nhân</h2>
+              <p className="card__sub">Kiến trúc module dễ mở rộng thêm tính năng #4, #5...</p>
+            </div>
+            <button
+              type="button"
+              className="card__link"
+              onClick={() => navigate('modules')}
+            >
+              Quản lý <IconChevronRight size={14} />
+            </button>
+          </div>
+
+          <div className="stack-list">
+            {APP_MODULES.map((mod) => (
+              <button
+                key={mod.id}
+                type="button"
+                className="module-quick-row"
+                onClick={() => navigate(mod.pageId)}
+              >
+                <span className={`pop-item__tile tile--${mod.tone}`}>
+                  <IconModuleGlyph moduleId={mod.id} size={16} />
+                </span>
+                <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
+                    {mod.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>{mod.tagline}</div>
+                </div>
+                <span className="pill pill--lime">Đang bật</span>
+              </button>
+            ))}
+
+            <button
+              type="button"
+              className="module-quick-row module-quick-row--dashed"
+              onClick={() => navigate('modules')}
+            >
+              <span className="pop-item__tile" style={{ background: 'var(--well-2)', color: 'var(--text)' }}>
+                <IconPlus size={16} />
+              </span>
+              <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
+                  Module #4+ (Mở rộng sau)
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                  {state.futureModules.length} ý tưởng đang chờ phát triển
+                </div>
+              </div>
+              <IconChevronRight size={15} />
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   );
 };

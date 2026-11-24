@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useCrm } from '../store/CrmContext';
-import { PageId, SpaceId } from '../types';
+import { APP_MODULES } from '../modules/registry';
+import { useApp } from '../store/AppContext';
+import { ModuleId, PageId } from '../types';
 import { assetUrl } from '../utils/assets';
-import { OPEN_STAGES, TODAY_ISO } from '../utils/format';
+import { localIsoDate } from '../utils/format';
 import {
   clamp01,
   easeInOutCubic,
@@ -17,59 +18,45 @@ import {
 import { RepAvatar } from './Avatar';
 import { AnimatedPopover, MagneticButton } from './Motion';
 import {
-  IconActivities,
-  IconBell,
-  IconChevronDown,
-  IconContacts,
-  IconHelp,
+  IconDumbbell,
+  IconLock,
   IconMenu,
+  IconModuleGlyph,
+  IconModules,
   IconMoon,
   IconOverview,
-  IconPipeline,
   IconPlus,
-  IconQuotes,
-  IconReports,
   IconSearch,
   IconSettings,
   IconSidebarToggle,
-  IconSpaceGlyph,
   IconSun,
   IconSylvaMark,
-  IconTeam,
+  IconTasks,
+  IconWallet,
 } from './Icons';
 
 const PAGE_LABELS: Record<PageId, string> = {
-  overview: 'Overview',
-  pipeline: 'Pipeline',
-  contacts: 'Contacts',
-  activities: 'Activities',
-  quotes: 'Quotes',
-  team: 'Team',
-  reports: 'Reports',
-  settings: 'Settings',
-  help: 'Help',
+  overview: 'Tổng quan',
+  gym: 'Gym · openGym',
+  tasks: 'Task cá nhân',
+  finance: 'Quản lí chi tiêu',
+  modules: 'Mở rộng module',
+  settings: 'Cài đặt',
 };
 
-const SPACE_IDS: SpaceId[] = ['nordlys', 'fjellgronn', 'glod'];
-const NAV_IDS: PageId[] = [
-  'overview',
-  'pipeline',
-  'contacts',
-  'activities',
-  'quotes',
-  'team',
-  'reports',
-];
+const MODULE_IDS: ModuleId[] = ['gym', 'tasks', 'finance'];
+const NAV_IDS: PageId[] = ['overview', 'gym', 'tasks', 'finance', 'modules'];
 
-const SIDEBAR_STORAGE_KEY = 'sylva_sidebar_open_v1';
-const STAGGER_STEP = 0.032; // exact Sylva vu = 0.032
-const TOTAL_SIDE_ITEMS = 17; // 0..16
+const SIDEBAR_STORAGE_KEY = 'sylva_personal_sidebar_v1';
+const STAGGER_STEP = 0.036;
+const TOTAL_SIDE_ITEMS = 14; // 0..13
+const TOTAL_FLYERS = 10; // 0..2 module tiles, 3..7 nav items, 8 settings, 9 theme
 
-// Flyer 0..12 -> Sidebar item index mapping
+// Flyer 0..9 -> Sidebar item index mapping
 const FLYER_TO_SIDE_IDX = [
-  2, 3, 4, // 3 spaces
-  6, 7, 8, 9, 10, 11, 12, // 7 nav items
-  13, 14, 15, // settings, help, theme
+  2, 3, 4, // 3 core modules
+  6, 7, 8, 9, 10, // 5 nav items (overview, gym, tasks, finance, modules)
+  11, 12, // settings, theme
 ];
 
 interface SlotPos {
@@ -81,21 +68,20 @@ interface SlotPos {
 export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const {
     state,
-    space,
+    gym,
     route,
     drawer,
     modal,
     navigate,
-    openDrawer,
+    openGymView,
     openModal,
-    switchSpace,
     toggleTheme,
-    markAllNotificationsRead,
-    markNotificationRead,
-    signOut,
-  } = useCrm();
+    lockApp,
+    exportUnifiedBackup,
+    pushToast,
+  } = useApp();
 
-  const [openPopover, setOpenPopover] = useState<'space' | 'new' | 'notif' | 'account' | null>(null);
+  const [openPopover, setOpenPopover] = useState<'modules' | 'new' | 'account' | null>(null);
   const [dockTip, setDockTip] = useState<{ label: string; x: number; y: number } | null>(null);
   const [isDesk, setIsDesk] = useState(() => isDesktopShell());
   const [isOpen, setIsOpen] = useState(() => {
@@ -107,7 +93,6 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     }
   });
 
-  // Refs for direct 240Hz spring DOM animation (ZERO React re-renders during open/close!)
   const shellRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -117,7 +102,6 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const dockRef = useRef<HTMLElement>(null);
   const stackRef = useRef<HTMLButtonElement>(null);
   const newAnchorRef = useRef<HTMLDivElement>(null);
-  const bellBtnRef = useRef<HTMLButtonElement>(null);
   const avatarBtnRef = useRef<HTMLButtonElement>(null);
   const crumbRef = useRef<HTMLDivElement>(null);
   const topRightRef = useRef<HTMLDivElement>(null);
@@ -125,7 +109,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
   const sideItemRefs = useRef<(HTMLElement | null)[]>([]);
   const sideSlotRefs = useRef<(HTMLSpanElement | null)[]>([]);
-  const dockSlotRefs = useRef<(HTMLSpanElement | null)[]>([]); // 0..2 = stack slots, 3..12 = dock slots
+  const dockSlotRefs = useRef<(HTMLSpanElement | null)[]>([]); // 0..2 stack, 3..9 dock
   const flyRefs = useRef<(HTMLDivElement | null)[]>([]);
   const flyRingRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
@@ -147,7 +131,6 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   isOpenRef.current = isOpen;
   isDeskRef.current = isDesk;
 
-  // Measure slot coordinates cleanly (accounting for current transforms & sidebar scroll)
   const measureSlots = useCallback(() => {
     const sideEl = sideRef.current;
     const mainEl = mainRef.current;
@@ -162,11 +145,10 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     const sideSlots: (SlotPos | null)[] = [];
     const collapsedSlots: (SlotPos | null)[] = [];
 
-    for (let i = 0; i < 13; i++) {
+    for (let i = 0; i < TOTAL_FLYERS; i++) {
       const sEl = sideSlotRefs.current[i];
       if (sEl) {
         const r = sEl.getBoundingClientRect();
-        // Side item i has a horizontal translate applied during transition; remove it via offsetLeft or snap
         const parentItem = sideItemRefs.current[FLYER_TO_SIDE_IDX[i]];
         const itemProg = clamp01(
           (o - STAGGER_STEP * FLYER_TO_SIDE_IDX[i]) / (1 - STAGGER_STEP * (TOTAL_SIDE_ITEMS - 1))
@@ -188,7 +170,6 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       if (dEl) {
         const r = dEl.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) {
-          // For 0..2 (.stack__slot inside .main), store x relative to .main left so it tracks .main seamlessly
           const relX = i < 3 ? r.left - mainRectLeft + r.width / 2 : r.left + r.width / 2;
           collapsedSlots[i] = {
             x: relX,
@@ -209,7 +190,6 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     }
   }, []);
 
-  // Apply progress `o` to EVERY animated shell element in one tight imperative pass
   const applyProgress = useCallback((o: number) => {
     const desk = isDeskRef.current;
     const reduced = isReducedMotion();
@@ -225,7 +205,6 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     const crumbEl = crumbRef.current;
     const topRightEl = topRightRef.current;
 
-    // 1. Main horizontal counter-translation & right-pinned actions (desktop only)
     let mainLeftLive = 0;
     let w = 0;
     if (mainEl) {
@@ -237,7 +216,6 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
         const invTx = Math.abs(w) < 0.01 ? '' : `translate3d(${(-w).toFixed(2)}px, 0, 0)`;
         if (topRightEl) topRightEl.style.transform = invTx;
-        // Also counter-pin page header actions so "+ New deal" stays locked to right edge!
         const pheadActs = mainEl.querySelector<HTMLElement>('.phead__actions');
         if (pheadActs) pheadActs.style.transform = invTx;
       } else {
@@ -248,7 +226,6 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       }
     }
 
-    // 2. Sidebar background & mobile drawer slide + scrim
     if (sideEl && sideBg) {
       if (desk) {
         sideEl.style.transform = '';
@@ -266,7 +243,6 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       scrimEl.style.opacity = desk ? '0' : String(clamped);
     }
 
-    // 3. Staggered sidebar items (0..16)
     for (let idx = 0; idx < TOTAL_SIDE_ITEMS; idx++) {
       const itemEl = sideItemRefs.current[idx];
       if (!itemEl) continue;
@@ -277,94 +253,82 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         : `translate3d(${((1 - easeOutCubic(s)) * (desk ? -24 : -14)).toFixed(2)}px, 0, 0)`;
     }
 
-    // 4. Dock, top-bar 3-space stack, and breadcrumb slide
     if (dockEl) {
-      dockEl.style.opacity = desk ? String(clamp01((0.55 - o) / 0.55)) : '0';
+      dockEl.style.opacity = desk ? String(clamp01(1 - o * 2.2)) : '0';
     }
     if (stackEl) {
-      stackEl.style.opacity = desk ? String(clamp01((0.5 - o) / 0.5)) : '1';
+      const fade = clamp01(1 - o * 2.2);
+      stackEl.style.opacity = String(fade);
+      stackEl.style.pointerEvents = fade < 0.08 ? 'none' : '';
     }
     if (crumbEl) {
-      crumbEl.style.transform = desk
-        ? `translate3d(${(-stackShiftRef.current * easeInOutCubic(clamped)).toFixed(2)}px, 0, 0)`
-        : '';
+      if (desk) {
+        const shift = -stackShiftRef.current * easeInOutCubic(clamped);
+        crumbEl.style.transform =
+          Math.abs(shift) < 0.05 ? '' : `translate3d(${shift.toFixed(2)}px, 0, 0)`;
+      } else {
+        crumbEl.style.transform = '';
+      }
     }
 
-    // 5. Permanent Flyers (3 space tiles + 10 nav glyphs)
+    const sideScrollTop = sideEl ? sideEl.scrollTop : 0;
     const { side: sideSlots, collapsed: colSlots } = slotsRef.current;
-    const scrollTop = sideEl ? sideEl.scrollTop : 0;
-    const overshoot = o > 1 ? o - 1 : 0;
-    const sideTxPhone = !desk ? (o - 1) * 316 : 0;
 
-    for (let i = 0; i < 13; i++) {
-      const flyEl = flyRefs.current[i];
-      if (!flyEl) continue;
-      const sSlot = sideSlots[i];
-      const cSlot = colSlots[i];
-      const mappedIdx = FLYER_TO_SIDE_IDX[i];
-      const s = clamp01((o - STAGGER_STEP * mappedIdx) / span);
-      const ringEl = flyRingRefs.current[i];
+    for (let i = 0; i < TOTAL_FLYERS; i++) {
+      const fEl = flyRefs.current[i];
+      if (!fEl) continue;
 
-      if (!sSlot) {
-        flyEl.style.opacity = '0';
+      const sPos = sideSlots[i];
+      const cPos = colSlots[i];
+
+      if (!desk) {
+        if (i < 3 && cPos) {
+          fEl.style.opacity = '1';
+          fEl.style.transform = `translate3d(${(cPos.x - 20).toFixed(2)}px, ${(cPos.y - 20).toFixed(2)}px, 0) scale(${(cPos.w / 40).toFixed(3)})`;
+          const ring = flyRingRefs.current[i];
+          if (ring) ring.style.opacity = '1';
+        } else {
+          fEl.style.opacity = '0';
+        }
         continue;
       }
 
-      const rx = sSlot.x + sideTxPhone;
-      const ry = sSlot.y - scrollTop;
+      if (!sPos || !cPos) {
+        fEl.style.opacity = '0';
+        continue;
+      }
 
-      if (cSlot && (desk || i < 3)) {
-        const px = i < 3 ? (desk ? mainLeftLive + cSlot.x : cSlot.x) : cSlot.x;
-        const py = cSlot.y;
-        const hScale = Math.min(cSlot.w, 40) / 40;
+      const cx = i < 3 ? mainLeftLive + cPos.x : cPos.x;
+      const cy = cPos.y;
+      const sx = sPos.x;
+      const sy = sPos.y - sideScrollTop;
 
-        if (reduced) {
-          const atOpen = o >= 0.5;
-          const x = atOpen ? rx : px;
-          const y = atOpen ? ry : py;
-          const sc = atOpen ? 1 : hScale;
-          flyEl.style.opacity = String(Math.abs(2 * clamped - 1));
-          flyEl.style.transform = `translate3d(${(x - 20).toFixed(2)}px, ${(y - 20).toFixed(
-            2
-          )}px, 0) scale(${sc.toFixed(4)})`;
-          if (ringEl) ringEl.style.opacity = atOpen ? '0' : '1';
-        } else {
-          const ex = easeOutCubic(s);
-          const ey = easeInOutCubic(s);
-          const x = lerp(px, rx, ex) + overshoot * (rx - px);
-          const y = lerp(py, ry, ey);
-          const sc = lerp(hScale, 1, ex);
-          flyEl.style.opacity = '1';
-          flyEl.style.transform = `translate3d(${(x - 20).toFixed(2)}px, ${(y - 20).toFixed(
-            2
-          )}px, 0) scale(${sc.toFixed(4)})`;
-          if (ringEl) ringEl.style.opacity = String(1 - clamp01(s * 2.2));
-        }
+      const t = i < 3 ? easeInOutCubic(clamped) : clamp01(o);
+      const x = lerp(cx, sx, t) - 20;
+      const y = lerp(cy, sy, t) - 20;
+
+      fEl.style.opacity = '1';
+      if (i < 3) {
+        const scale = lerp(cPos.w, sPos.w, t) / 40;
+        fEl.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${scale.toFixed(3)})`;
+        const ring = flyRingRefs.current[i];
+        if (ring) ring.style.opacity = String(clamp01(1 - o * 2.2));
       } else {
-        // Phone mode for nav glyphs (no collapsed dock): scale + fade inside sliding drawer
-        const sc = 0.6 + 0.4 * easeOutCubic(s);
-        flyEl.style.opacity = String(s);
-        flyEl.style.transform = `translate3d(${(rx - 20).toFixed(2)}px, ${(ry - 20).toFixed(
-          2
-        )}px, 0) scale(${sc.toFixed(4)})`;
-        if (ringEl) ringEl.style.opacity = '0';
+        fEl.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
       }
     }
   }, []);
 
-  // Ticker callback driving the 240 Hz Spring
-  const tickRef = useRef<((time: number, deltaMs: number) => void) | null>(null);
+  const tickRef = useRef<(() => void) | null>(null);
 
-  const startSpringTo = useCallback(
-    (nextOpen: boolean) => {
-      const target = nextOpen ? 1 : 0;
-      const spring = springRef.current;
-      spring.target = target;
-
-      if (mainRef.current) {
-        mainRef.current.style.willChange = 'transform';
+  const startAnimation = useCallback(
+    (target: number) => {
+      if (tickRef.current) {
+        gsap.ticker.remove(tickRef.current);
+        tickRef.current = null;
       }
 
+      const spring = springRef.current;
       if (isReducedMotion()) {
         reducedAnimRef.current = {
           active: true,
@@ -372,74 +336,65 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           to: target,
           t0: performance.now(),
         };
-      } else {
-        reducedAnimRef.current.active = false;
-      }
-
-      if (tickRef.current) {
-        gsap.ticker.remove(tickRef.current);
-      }
-
-      const onTick = (_time: number, deltaMs: number) => {
-        let settled = false;
-        if (reducedAnimRef.current.active) {
-          const { from, to, t0 } = reducedAnimRef.current;
-          const p = clamp01((performance.now() - t0) / 180);
-          spring.value = lerp(from, to, p);
+        const fn = () => {
+          const st = reducedAnimRef.current;
+          const p = clamp01((performance.now() - st.t0) / 140);
+          spring.value = lerp(st.from, st.to, p);
+          spring.velocity = 0;
+          applyProgress(spring.value);
           if (p >= 1) {
-            spring.snap(to);
-            reducedAnimRef.current.active = false;
-            settled = true;
+            st.active = false;
+            spring.snap(st.to);
+            applyProgress(st.to);
+            if (tickRef.current) {
+              gsap.ticker.remove(tickRef.current);
+              tickRef.current = null;
+            }
           }
-        } else {
-          settled = spring.step(deltaMs / 1000);
-        }
+        };
+        tickRef.current = fn;
+        gsap.ticker.add(fn);
+        return;
+      }
 
+      spring.target = target;
+      let lastT = performance.now();
+      const fn = () => {
+        const now = performance.now();
+        const dt = Math.min(0.05, Math.max(0.001, (now - lastT) / 1000));
+        lastT = now;
+        const settled = spring.step(dt);
         applyProgress(spring.value);
-
         if (settled) {
-          gsap.ticker.remove(onTick);
-          tickRef.current = null;
-          if (mainRef.current) mainRef.current.style.willChange = '';
+          spring.snap(target);
+          applyProgress(target);
+          if (tickRef.current) {
+            gsap.ticker.remove(tickRef.current);
+            tickRef.current = null;
+          }
         }
       };
-
-      tickRef.current = onTick;
-      gsap.ticker.add(onTick);
+      tickRef.current = fn;
+      gsap.ticker.add(fn);
     },
     [applyProgress]
   );
 
-  const showDockTip = useCallback((label: string, el: HTMLElement) => {
-    if (isOpenRef.current || !isDeskRef.current) return;
-    const r = el.getBoundingClientRect();
-    setDockTip({ label, x: Math.round(r.right + 14), y: Math.round(r.top + r.height / 2) });
-  }, []);
-
-  const hideDockTip = useCallback(() => {
+  const setSidebarOpen = useCallback((next: boolean) => {
+    if (isOpenRef.current === next) return;
+    isOpenRef.current = next;
+    setOpenPopover(null);
     setDockTip(null);
+    setIsOpen(next);
+    if (isDeskRef.current) {
+      try {
+        window.localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? '1' : '0');
+      } catch {
+        // Ignore
+      }
+    }
   }, []);
 
-  // Toggle sidebar (persists tiny flag only — NEVER touches CrmContext!)
-  const setSidebarOpen = useCallback(
-    (next: boolean) => {
-      if (isOpenRef.current === next) return;
-      isOpenRef.current = next;
-      setOpenPopover(null);
-      setDockTip(null);
-      setIsOpen(next);
-      if (isDeskRef.current) {
-        try {
-          window.localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? '1' : '0');
-        } catch {
-          // Ignore
-        }
-      }
-    },
-    []
-  );
-
-  // Close popovers whenever a modal or drawer opens, or on route/space change
   useEffect(() => {
     if (modal || drawer) {
       setOpenPopover(null);
@@ -449,68 +404,73 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     setOpenPopover(null);
+    setDockTip(null);
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
-  }, [route.page, space.id]);
+  }, [route.page]);
 
-  const toggleSidebar = useCallback(() => {
-    setSidebarOpen(!isOpenRef.current);
-  }, [setSidebarOpen]);
-
-  // Immediately counter-translate & launch 240Hz spring synchronously in useLayoutEffect BEFORE paint!
-  const didMountRef = useRef(false);
-  useLayoutEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-      springRef.current.snap(isOpen ? 1 : 0);
-      measureSlots();
-      applyProgress(springRef.current.value);
-      return;
-    }
-    measureSlots();
-    applyProgress(springRef.current.value);
-    startSpringTo(isOpen);
-  }, [isOpen, measureSlots, applyProgress, startSpringTo]);
-
-  // Listen to ⌘B shortcut, Escape on mobile drawer, and route change on mobile
   useEffect(() => {
-    const onToggleEvt = () => toggleSidebar();
-    const onEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setOpenPopover(null);
-        if (!isDeskRef.current && isOpenRef.current) setSidebarOpen(false);
-      }
-    };
-    const onDocClick = (e: MouseEvent) => {
+    const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (!target) return;
-      if (
-        target.closest('[data-sylva-popover="true"]') ||
-        target.closest('[data-pop-trigger]')
-      ) {
+      const inInput =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable);
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setOpenPopover(null);
+        openModal(modal?.kind === 'search' ? null : { kind: 'search' });
         return;
       }
-      setOpenPopover(null);
+      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+        e.preventDefault();
+        setSidebarOpen(!isOpenRef.current);
+        return;
+      }
+      if (e.key === 'Escape') {
+        if (openPopover) {
+          setOpenPopover(null);
+        } else if (!isDeskRef.current && isOpenRef.current) {
+          setSidebarOpen(false);
+        }
+        return;
+      }
+      if (inInput || modal || drawer) return;
+      if (e.key === '?') {
+        e.preventDefault();
+        openModal({ kind: 'shortcuts' });
+      }
     };
-    window.addEventListener('sylva:toggle-sidebar', onToggleEvt);
-    document.addEventListener('keydown', onEsc);
-    document.addEventListener('mousedown', onDocClick);
-    return () => {
-      window.removeEventListener('sylva:toggle-sidebar', onToggleEvt);
-      document.removeEventListener('keydown', onEsc);
-      document.removeEventListener('mousedown', onDocClick);
-    };
-  }, [toggleSidebar, setSidebarOpen]);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [modal, drawer, openPopover, openModal, setSidebarOpen]);
 
-  // Keep desktop vs phone media query synced + ResizeObserver + fonts.ready + sidebar scroll sync
-  useEffect(() => {
+  useLayoutEffect(() => {
+    measureSlots();
+    startAnimation(isOpen ? 1 : 0);
+  }, [isOpen, measureSlots, startAnimation]);
+
+  useLayoutEffect(() => {
     const mq = window.matchMedia('(min-width: 821px)');
     const onMq = () => {
       const desk = mq.matches;
       isDeskRef.current = desk;
       setIsDesk(desk);
-      if (!desk && isOpenRef.current) {
+      if (desk) {
+        let saved = false;
+        try {
+          saved = window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === '1';
+        } catch {
+          saved = false;
+        }
+        isOpenRef.current = saved;
+        setIsOpen(saved);
+        springRef.current.snap(saved ? 1 : 0);
+      } else {
         isOpenRef.current = false;
         setIsOpen(false);
         springRef.current.snap(0);
@@ -550,13 +510,11 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     };
   }, [measureSlots, applyProgress]);
 
-  // Re-sync flyers whenever route/space changes (e.g. badges or page header mount)
   useLayoutEffect(() => {
     measureSlots();
     applyProgress(springRef.current.value);
-  }, [route.page, space.id, measureSlots, applyProgress]);
+  }, [route.page, measureSlots, applyProgress]);
 
-  // Close mobile drawer when navigating
   const handleNav = (pg: PageId, sub?: string) => {
     navigate(pg, sub);
     if (!isDeskRef.current && isOpenRef.current) {
@@ -564,51 +522,62 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     }
   };
 
-  const openDealsCount = space.deals.filter((d) => OPEN_STAGES.includes(d.stage)).length;
-  const dueTodayCount = space.activities.filter((a) => !a.done && a.date === TODAY_ISO).length;
-  const awaitingQuotesCount = space.quotes.filter((q) => q.status === 'sent').length;
-  const unreadNotifs = space.notifications.filter((n) => !n.read).length;
+  const today = localIsoDate();
+  const pendingTasksToday = state.tasks.filter(
+    (t) => t.status !== 'done' && t.dueDate && t.dueDate <= today
+  ).length;
+  const openTasksCount = state.tasks.filter((t) => t.status !== 'done').length;
+  const txThisMonth = state.finance.transactions.filter((t) =>
+    t.date.startsWith(today.slice(0, 7))
+  ).length;
 
   const navMeta: { id: PageId; label: string; badge?: number }[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'pipeline', label: 'Pipeline', badge: openDealsCount },
-    { id: 'contacts', label: 'Contacts' },
-    { id: 'activities', label: 'Activities', badge: dueTodayCount },
-    { id: 'quotes', label: 'Quotes', badge: awaitingQuotesCount },
-    { id: 'team', label: 'Team' },
-    { id: 'reports', label: 'Reports' },
+    { id: 'overview', label: 'Tổng quan' },
+    { id: 'gym', label: 'Gym (openGym)', badge: gym.activeWorkout ? 1 : undefined },
+    { id: 'tasks', label: 'Task cá nhân', badge: pendingTasksToday || openTasksCount || undefined },
+    { id: 'finance', label: 'Quản lí chi tiêu', badge: txThisMonth || undefined },
+    { id: 'modules', label: 'Mở rộng', badge: state.futureModules.length || undefined },
   ];
 
-  const activeSpaceIdx = SPACE_IDS.indexOf(space.id);
+  const activeModuleIdx = MODULE_IDS.indexOf(route.page as ModuleId);
   const activeNavIdx = NAV_IDS.indexOf(route.page);
-  const { theme, profile } = state.settings;
+  const { theme, profile, pinEnabled } = state.settings;
 
   const renderGlyphIcon = (idx: number) => {
     switch (idx) {
       case 3:
         return <IconOverview />;
       case 4:
-        return <IconPipeline />;
+        return <IconDumbbell />;
       case 5:
-        return <IconContacts />;
+        return <IconTasks />;
       case 6:
-        return <IconActivities />;
+        return <IconWallet />;
       case 7:
-        return <IconQuotes />;
+        return <IconModules />;
       case 8:
-        return <IconTeam />;
-      case 9:
-        return <IconReports />;
-      case 10:
         return <IconSettings />;
-      case 11:
-        return <IconHelp />;
-      case 12:
+      case 9:
         return theme === 'dark' ? <IconSun /> : <IconMoon />;
       default:
         return null;
     }
   };
+
+  const handleQuickExport = () => {
+    const json = exportUnifiedBackup();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sylva-personal-backup-${today}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setOpenPopover(null);
+    pushToast('Đã tải xuống file sao lưu toàn bộ (openGym + Tasks + Chi tiêu)');
+  };
+
+  const isGymFullBleed = route.page === 'gym';
 
   return (
     <>
@@ -617,85 +586,101 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         <div className="backdrop__wash" />
       </div>
 
-      {/* Permanent Flyers Overlay — exact Sylva architecture! Never unmounts, zero flicker */}
+      {/* Permanent Flyers Overlay — exact Sylva 240Hz spring morph */}
       <div className="flyers" aria-hidden="true">
-        {SPACE_IDS.map((sid, i) => {
-          const sp = state.spaces[sid];
+        {APP_MODULES.map((mod, i) => {
+          const isCurrent = activeModuleIdx === i;
           return (
             <div
-              key={`fly-sp-${sid}`}
+              key={`fly-mod-${mod.id}`}
               ref={(el) => {
                 flyRefs.current[i] = el;
               }}
-              className={`fly fly--space space-tile--${sp.tone}`}
-              style={{ zIndex: 30 - i }}
+              className={`fly fly--space tile--${mod.tone}`}
+              style={{ zIndex: isCurrent ? 3 : 2 - i }}
             >
-              <IconSpaceGlyph icon={sp.icon} size={18} />
               <span
-                className="fly__ring"
                 ref={(el) => {
                   flyRingRefs.current[i] = el;
                 }}
+                className="fly__ring"
               />
+              <IconModuleGlyph moduleId={mod.id} size={17} />
             </div>
           );
         })}
-
-        {[3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((idx) => (
-          <div
-            key={`fly-gl-${idx}`}
-            ref={(el) => {
-              flyRefs.current[idx] = el;
-            }}
-            className="fly fly--glyph"
-          >
-            {renderGlyphIcon(idx)}
-          </div>
-        ))}
+        {Array.from({ length: 7 }, (_, j) => {
+          const idx = 3 + j;
+          const isActive =
+            (j < 5 && activeNavIdx === j) || (j === 5 && route.page === 'settings');
+          return (
+            <div
+              key={`fly-glyph-${idx}`}
+              ref={(el) => {
+                flyRefs.current[idx] = el;
+              }}
+              className={`fly fly--glyph ${isActive ? 'is-active' : ''}`}
+            >
+              {renderGlyphIcon(idx)}
+            </div>
+          );
+        })}
       </div>
 
       <div
         ref={shellRef}
-        className={`shell ${isDesk ? 'is-desk' : 'is-phone'} ${isOpen ? 'is-open' : ''}`}
+        className={`shell ${isDesk ? 'is-desk' : ''} ${isOpen ? 'is-open' : ''}`}
       >
-        {/* Collapsed Floating Dock — empty 40x40 .dock__slot spacers */}
-        <aside ref={dockRef} className="dock" aria-label="Primary dock" onMouseLeave={hideDockTip}>
+        <div
+          ref={scrimRef}
+          className="scrim"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+
+        {/* Collapsed Floating Dock */}
+        <aside ref={dockRef} className="dock" aria-label="Điều hướng nhanh">
           <button
             type="button"
             className="dock__btn"
-            onClick={toggleSidebar}
-            onMouseEnter={(e) => showDockTip('Sidebar ⌘B', e.currentTarget)}
-            onFocus={(e) => showDockTip('Sidebar ⌘B', e.currentTarget)}
-            onBlur={hideDockTip}
-            aria-label="Expand sidebar"
+            aria-label="Mở thanh bên"
+            onClick={() => setSidebarOpen(true)}
+            onMouseEnter={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setDockTip({ label: 'Mở rộng menu', x: r.right + 12, y: r.top + r.height / 2 });
+            }}
+            onMouseLeave={() => setDockTip(null)}
           >
-            <IconSidebarToggle />
+            <IconSidebarToggle size={19} />
           </button>
 
           <div className="dock__sep" />
 
-          {navMeta.map((item, i) => {
+          {navMeta.map((item, j) => {
+            const fIdx = 3 + j;
             const active = route.page === item.id;
             return (
               <button
                 key={item.id}
                 type="button"
                 className={`dock__btn ${active ? 'is-active' : ''}`}
-                onClick={() => handleNav(item.id)}
-                onMouseEnter={(e) => showDockTip(item.label, e.currentTarget)}
-                onFocus={(e) => showDockTip(item.label, e.currentTarget)}
-                onBlur={hideDockTip}
                 aria-label={item.label}
                 aria-current={active ? 'page' : undefined}
+                onClick={() => handleNav(item.id)}
+                onMouseEnter={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setDockTip({ label: item.label, x: r.right + 12, y: r.top + r.height / 2 });
+                }}
+                onMouseLeave={() => setDockTip(null)}
               >
                 <span
-                  className="dock__slot"
                   ref={(el) => {
-                    dockSlotRefs.current[3 + i] = el;
+                    dockSlotRefs.current[fIdx] = el;
                   }}
+                  className="dock__slot"
                 />
-                {item.badge !== undefined && item.badge > 0 && <span className="dock__badge-dot" />}
-                {active && <span className="dock__active-dot" />}
+                {active && <span className="dock__dot" />}
+                {item.badge && item.badge > 0 && !active && <span className="dock__badge-dot" />}
               </button>
             );
           })}
@@ -705,349 +690,299 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           <button
             type="button"
             className={`dock__btn ${route.page === 'settings' ? 'is-active' : ''}`}
+            aria-label="Cài đặt"
             onClick={() => handleNav('settings')}
-            onMouseEnter={(e) => showDockTip('Settings', e.currentTarget)}
-            onFocus={(e) => showDockTip('Settings', e.currentTarget)}
-            onBlur={hideDockTip}
-            aria-label="Settings"
+            onMouseEnter={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setDockTip({ label: 'Cài đặt', x: r.right + 12, y: r.top + r.height / 2 });
+            }}
+            onMouseLeave={() => setDockTip(null)}
           >
             <span
-              className="dock__slot"
               ref={(el) => {
-                dockSlotRefs.current[10] = el;
+                dockSlotRefs.current[8] = el;
               }}
-            />
-            {route.page === 'settings' && <span className="dock__active-dot" />}
-          </button>
-
-          <button
-            type="button"
-            className={`dock__btn ${route.page === 'help' ? 'is-active' : ''}`}
-            onClick={() => handleNav('help')}
-            onMouseEnter={(e) => showDockTip('Help', e.currentTarget)}
-            onFocus={(e) => showDockTip('Help', e.currentTarget)}
-            onBlur={hideDockTip}
-            aria-label="Help"
-          >
-            <span
               className="dock__slot"
-              ref={(el) => {
-                dockSlotRefs.current[11] = el;
-              }}
             />
-            {route.page === 'help' && <span className="dock__active-dot" />}
+            {route.page === 'settings' && <span className="dock__dot" />}
           </button>
 
           <button
             type="button"
             className="dock__btn"
+            aria-label={theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'}
             onClick={toggleTheme}
-            onMouseEnter={(e) =>
-              showDockTip(theme === 'dark' ? 'Light mode' : 'Dark mode', e.currentTarget)
-            }
-            onFocus={(e) =>
-              showDockTip(theme === 'dark' ? 'Light mode' : 'Dark mode', e.currentTarget)
-            }
-            onBlur={hideDockTip}
-            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            onMouseEnter={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setDockTip({
+                label: theme === 'dark' ? 'Chế độ sáng' : 'Chế độ tối',
+                x: r.right + 12,
+                y: r.top + r.height / 2,
+              });
+            }}
+            onMouseLeave={() => setDockTip(null)}
           >
             <span
-              className="dock__slot"
               ref={(el) => {
-                dockSlotRefs.current[12] = el;
+                dockSlotRefs.current[9] = el;
               }}
+              className="dock__slot"
             />
           </button>
         </aside>
 
-        {/* Mobile drawer scrim */}
-        <div
-          ref={scrimRef}
-          className={`side-scrim ${!isDesk && isOpen ? 'is-active' : ''}`}
-          onClick={() => setSidebarOpen(false)}
-        />
-
-        {/* Expanded Glass Sidebar — empty 40x40 .slot spacers; animated by 240Hz spring */}
-        <aside ref={sideRef} className="side" aria-label="Workspace sidebar">
+        {/* Expanded Sidebar */}
+        <aside ref={sideRef} className="side" aria-label="Menu chính">
           <div ref={sideBgRef} className="side__bg" aria-hidden="true" />
-
-          <div
-            className="side__head"
-            ref={(el) => {
-              sideItemRefs.current[0] = el;
-            }}
-          >
-            <button type="button" className="brand" onClick={() => handleNav('overview')}>
-              <span className="brand__mark">
-                <IconSylvaMark size={18} />
-              </span>
-              <span className="brand__name">
-                Sylva<span className="brand__tag">CRM</span>
-              </span>
-            </button>
-            <button
-              type="button"
-              className="icon-circle"
-              onClick={toggleSidebar}
-              aria-label="Collapse sidebar"
-              title="Fold sidebar (⌘B)"
+          <div className="side__content">
+            <div
+              ref={(el) => {
+                sideItemRefs.current[0] = el;
+              }}
+              className="side__top"
             >
-              <IconSidebarToggle size={16} />
-            </button>
-          </div>
-
-          <div
-            className="side__section-label"
-            ref={(el) => {
-              sideItemRefs.current[1] = el;
-            }}
-          >
-            Spaces
-          </div>
-
-          <div className="side__group">
-            <span
-              className="side__pill"
-              aria-hidden="true"
-              style={
-                {
-                  '--h': '52px',
-                  '--sel': Math.max(0, activeSpaceIdx),
-                } as React.CSSProperties
-              }
-            />
-            <div className="side__spaces">
-              {SPACE_IDS.map((sid, i) => {
-                const sp = state.spaces[sid];
-                const active = sp.id === space.id;
-                return (
-                  <button
-                    key={sp.id}
-                    ref={(el) => {
-                      sideItemRefs.current[2 + i] = el;
-                    }}
-                    type="button"
-                    className={`space-btn ${active ? 'is-active' : ''}`}
-                    onClick={() => {
-                      switchSpace(sp.id);
-                      if (!isDeskRef.current) setSidebarOpen(false);
-                    }}
-                  >
-                    <span
-                      className="slot"
-                      ref={(el) => {
-                        sideSlotRefs.current[i] = el;
-                      }}
-                    />
-                    <div>
-                      <div className="space-btn__name">{sp.name}</div>
-                      <div className="space-btn__sub">
-                        {sp.tagline} · {sp.city}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+              <button
+                type="button"
+                className="brand"
+                onClick={() => handleNav('overview')}
+                style={{ cursor: 'pointer' }}
+              >
+                <span className="brand__mark">
+                  <IconSylvaMark size={18} />
+                </span>
+                <span className="brand__name">
+                  Sylva<span className="brand__tag">LIFE</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="side__toggle"
+                aria-label="Thu gọn menu"
+                onClick={() => setSidebarOpen(false)}
+              >
+                <IconSidebarToggle size={17} />
+              </button>
             </div>
-          </div>
 
-          <div
-            className="side__section-label"
-            ref={(el) => {
-              sideItemRefs.current[5] = el;
-            }}
-          >
-            Menu
-          </div>
+            <div
+              ref={(el) => {
+                sideItemRefs.current[1] = el;
+              }}
+              className="side__label"
+            >
+              Modules cá nhân
+            </div>
 
-          <div className="side__group" style={{ flex: 1 }}>
-            <span
-              className={`side__pill ${activeNavIdx < 0 ? 'is-off' : ''}`}
-              aria-hidden="true"
-              style={
-                {
-                  '--h': '42px',
-                  '--sel': Math.max(0, activeNavIdx),
-                } as React.CSSProperties
-              }
-            />
-            <nav className="side__nav">
-              {navMeta.map((item, i) => {
-                const active = route.page === item.id;
-                return (
-                  <button
-                    key={item.id}
+            {APP_MODULES.map((mod, i) => {
+              const active = route.page === mod.pageId;
+              const disabled = !state.settings.enabledModules[mod.id];
+              return (
+                <button
+                  key={mod.id}
+                  ref={(el) => {
+                    sideItemRefs.current[2 + i] = el;
+                  }}
+                  type="button"
+                  className={`space-row ${active ? 'is-active' : ''}`}
+                  style={{ opacity: disabled ? 0.52 : undefined }}
+                  onClick={() => handleNav(mod.pageId)}
+                >
+                  <span
                     ref={(el) => {
-                      sideItemRefs.current[6 + i] = el;
+                      sideSlotRefs.current[i] = el;
                     }}
-                    type="button"
-                    className={`nav-item ${active ? 'is-active' : ''}`}
-                    onClick={() => handleNav(item.id)}
+                    className={`space-row__slot tile--${mod.tone}`}
                   >
-                    <span
-                      className="slot"
-                      ref={(el) => {
-                        sideSlotRefs.current[3 + i] = el;
-                      }}
-                    />
-                    <span>{item.label}</span>
-                    {active && <span className="nav-item__dot" />}
-                    {item.badge !== undefined && item.badge > 0 && (
-                      <span className="nav-item__badge">{item.badge}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
+                    {!isDesk && <IconModuleGlyph moduleId={mod.id} size={17} />}
+                  </span>
+                  <span className="space-row__text">
+                    <span className="space-row__name">{mod.shortName}</span>
+                    <span className="space-row__meta">{mod.tagline}</span>
+                  </span>
+                </button>
+              );
+            })}
 
-          <div className="side__footer">
-            <button
+            <div
               ref={(el) => {
-                sideItemRefs.current[13] = el;
+                sideItemRefs.current[5] = el;
               }}
-              type="button"
-              className={`nav-item ${route.page === 'settings' ? 'is-active' : ''}`}
-              onClick={() => handleNav('settings')}
+              className="side__label"
+              style={{ marginTop: 12 }}
             >
-              <span
-                className="slot"
+              Điều hướng
+            </div>
+
+            {navMeta.map((item, j) => {
+              const fIdx = 3 + j;
+              const active = route.page === item.id;
+              return (
+                <button
+                  key={item.id}
+                  ref={(el) => {
+                    sideItemRefs.current[6 + j] = el;
+                  }}
+                  type="button"
+                  className={`nav-row ${active ? 'is-active' : ''}`}
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => handleNav(item.id)}
+                >
+                  <span
+                    ref={(el) => {
+                      sideSlotRefs.current[fIdx] = el;
+                    }}
+                    className="nav-row__slot"
+                  >
+                    {!isDesk && renderGlyphIcon(fIdx)}
+                  </span>
+                  <span className="nav-row__label">{item.label}</span>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="nav-row__badge">{item.badge}</span>
+                  )}
+                </button>
+              );
+            })}
+
+            <div className="side__foot">
+              <button
                 ref={(el) => {
-                  sideSlotRefs.current[10] = el;
+                  sideItemRefs.current[11] = el;
                 }}
-              />
-              <span>Settings</span>
-            </button>
+                type="button"
+                className={`nav-row ${route.page === 'settings' ? 'is-active' : ''}`}
+                onClick={() => handleNav('settings')}
+              >
+                <span
+                  ref={(el) => {
+                    sideSlotRefs.current[8] = el;
+                  }}
+                  className="nav-row__slot"
+                >
+                  {!isDesk && <IconSettings />}
+                </span>
+                <span className="nav-row__label">Cài đặt</span>
+              </button>
 
-            <button
-              ref={(el) => {
-                sideItemRefs.current[14] = el;
-              }}
-              type="button"
-              className={`nav-item ${route.page === 'help' ? 'is-active' : ''}`}
-              onClick={() => handleNav('help')}
-            >
-              <span
-                className="slot"
+              <button
                 ref={(el) => {
-                  sideSlotRefs.current[11] = el;
+                  sideItemRefs.current[12] = el;
                 }}
-              />
-              <span>Help</span>
-            </button>
+                type="button"
+                className="nav-row"
+                onClick={toggleTheme}
+              >
+                <span
+                  ref={(el) => {
+                    sideSlotRefs.current[9] = el;
+                  }}
+                  className="nav-row__slot"
+                >
+                  {!isDesk && (theme === 'dark' ? <IconSun /> : <IconMoon />)}
+                </span>
+                <span className="nav-row__label">
+                  {theme === 'dark' ? 'Giao diện sáng' : 'Giao diện tối'}
+                </span>
+              </button>
 
-            <button
-              ref={(el) => {
-                sideItemRefs.current[15] = el;
-              }}
-              type="button"
-              className="side__theme-row"
-              onClick={toggleTheme}
-            >
-              <span
-                className="slot"
+              <div
                 ref={(el) => {
-                  sideSlotRefs.current[12] = el;
+                  sideItemRefs.current[13] = el;
                 }}
-              />
-              <span>Dark mode</span>
-              <span className={`switch ${theme === 'dark' ? 'is-on' : ''}`} aria-hidden>
-                <span className="switch__knob" />
-              </span>
-            </button>
-
-            <button
-              ref={(el) => {
-                sideItemRefs.current[16] = el;
-              }}
-              type="button"
-              className="side__account"
-              onClick={() => handleNav('settings', 'profile')}
-            >
-              <RepAvatar src={profile.avatar} name={profile.name} size={38} />
-              <div className="side__account-info">
-                <div className="side__account-name">{profile.name}</div>
-                <div className="side__account-role">{profile.role}</div>
+                className="side__profile"
+                onClick={() => handleNav('settings', 'profile')}
+                role="button"
+                tabIndex={0}
+              >
+                <RepAvatar src={profile.avatar} name={profile.name} size={36} />
+                <div className="side__profile-text">
+                  <div className="side__profile-name">{profile.name}</div>
+                  <div className="side__profile-role">Không gian cá nhân</div>
+                </div>
               </div>
-              <IconChevronDown size={15} />
-            </button>
+            </div>
           </div>
         </aside>
 
-        {/* Main Fixed Content Shell */}
+        {/* Main Scroll & Topbar */}
         <div ref={mainRef} className="main">
-          <header className="top" ref={topRef}>
+          <div ref={topRef} className="top">
             <div className="top__left">
               <button
                 type="button"
-                className="mobile-menu-btn"
+                className="burger"
+                aria-label="Mở menu"
                 onClick={() => setSidebarOpen(true)}
-                aria-label="Open menu"
               >
-                <IconMenu />
+                <IconMenu size={20} />
               </button>
 
-              {/* Top-bar 3-space stack pill — holds 3 empty 28x28 .stack__slot spacers */}
-              <div className="stack-wrap">
-                <button
-                  ref={stackRef}
-                  data-pop-trigger="space"
-                  type="button"
-                  className="stack"
-                  onClick={() => setOpenPopover((p) => (p === 'space' ? null : 'space'))}
-                  aria-label="Switch space"
-                  aria-expanded={openPopover === 'space'}
-                  title="Switch workspace"
-                >
-                  {SPACE_IDS.map((sid, i) => (
-                    <span
-                      key={sid}
-                      className="stack__slot"
-                      ref={(el) => {
-                        dockSlotRefs.current[i] = el;
-                      }}
-                    />
-                  ))}
-                </button>
+              <button
+                ref={stackRef}
+                type="button"
+                className="stack"
+                aria-label="Chuyển nhanh module"
+                onClick={() => setOpenPopover(openPopover === 'modules' ? null : 'modules')}
+              >
+                {APP_MODULES.map((mod, i) => (
+                  <span
+                    key={mod.id}
+                    ref={(el) => {
+                      dockSlotRefs.current[i] = el;
+                    }}
+                    className={`stack__slot ${activeModuleIdx === i ? 'is-front' : ''}`}
+                  />
+                ))}
+              </button>
 
-                <AnimatedPopover
-                  open={openPopover === 'space'}
-                  anchorRef={stackRef}
-                  align="left"
-                  style={{ width: 252 }}
-                >
-                  <div className="side__section-label" style={{ paddingTop: 6 }}>
-                    Switch space
-                  </div>
-                  {SPACE_IDS.map((sid) => {
-                    const sp = state.spaces[sid];
-                    return (
-                      <button
-                        key={sid}
-                        type="button"
-                        className={`space-btn ${sid === space.id ? 'is-active' : ''}`}
-                        onClick={() => {
-                          switchSpace(sid);
-                          setOpenPopover(null);
-                        }}
-                      >
-                        <span className={`space-tile space-tile--${sp.tone}`}>
-                          <IconSpaceGlyph icon={sp.icon} size={16} />
-                        </span>
-                        <div>
-                          <div className="space-btn__name">{sp.name}</div>
-                          <div className="space-btn__sub">
-                            {sp.tagline} · {sp.city}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </AnimatedPopover>
-              </div>
+              <AnimatedPopover
+                open={openPopover === 'modules'}
+                anchorRef={stackRef}
+                align="left"
+                className="popover--space"
+                onClose={() => setOpenPopover(null)}
+              >
+                <div className="popover__head">
+                  <span>Chuyển nhanh module</span>
+                  <button
+                    type="button"
+                    className="popover__action"
+                    onClick={() => {
+                      setOpenPopover(null);
+                      handleNav('modules');
+                    }}
+                  >
+                    Mở rộng
+                  </button>
+                </div>
+                {APP_MODULES.map((mod) => (
+                  <button
+                    key={mod.id}
+                    type="button"
+                    className={`pop-item ${route.page === mod.pageId ? 'is-active' : ''}`}
+                    onClick={() => {
+                      setOpenPopover(null);
+                      handleNav(mod.pageId);
+                    }}
+                  >
+                    <span className={`pop-item__tile tile--${mod.tone}`}>
+                      <IconModuleGlyph moduleId={mod.id} size={15} />
+                    </span>
+                    <span className="pop-item__text">
+                      <span className="pop-item__title">{mod.name}</span>
+                      <span className="pop-item__sub">{mod.tagline}</span>
+                    </span>
+                  </button>
+                ))}
+              </AnimatedPopover>
 
               <div ref={crumbRef} className="crumb">
-                <span className="crumb__space">{space.name}</span>
+                <button
+                  type="button"
+                  className="crumb__space"
+                  onClick={() => handleNav('overview')}
+                >
+                  {profile.name}
+                </button>
                 <span className="crumb__sep">/</span>
                 <span className="crumb__page">{PAGE_LABELS[route.page]}</span>
               </div>
@@ -1056,232 +991,192 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
             <div ref={topRightRef} className="top__right">
               <button
                 type="button"
-                className="top__search"
+                className="search-btn"
                 onClick={() => openModal({ kind: 'search' })}
               >
-                <IconSearch size={16} />
-                <span className="top__search-text">Search deals, people...</span>
-                <span className="kbd">⌘K</span>
+                <IconSearch size={15} />
+                <span className="search-btn__text">Tìm nhanh...</span>
+                <kbd className="kbd">⌘K</kbd>
               </button>
+
+              <div ref={newAnchorRef} style={{ position: 'relative' }}>
+                <MagneticButton
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={() => setOpenPopover(openPopover === 'new' ? null : 'new')}
+                >
+                  <IconPlus size={15} />
+                  <span>Tạo mới</span>
+                </MagneticButton>
+              </div>
+
+              <AnimatedPopover
+                open={openPopover === 'new'}
+                anchorRef={newAnchorRef}
+                align="right"
+                className="popover--new"
+                onClose={() => setOpenPopover(null)}
+              >
+                <button
+                  type="button"
+                  className="pop-item"
+                  onClick={() => {
+                    setOpenPopover(null);
+                    openModal({ kind: 'new-task' });
+                  }}
+                >
+                  <span className="pop-item__tile tile--sky">
+                    <IconTasks size={15} />
+                  </span>
+                  <span className="pop-item__text">
+                    <span className="pop-item__title">Task cá nhân mới</span>
+                    <span className="pop-item__sub">Thêm việc cần làm & hạn chót</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="pop-item"
+                  onClick={() => {
+                    setOpenPopover(null);
+                    openModal({ kind: 'new-tx', defaultType: 'expense' });
+                  }}
+                >
+                  <span className="pop-item__tile tile--coral">
+                    <IconWallet size={15} />
+                  </span>
+                  <span className="pop-item__text">
+                    <span className="pop-item__title">Ghi chi tiêu mới</span>
+                    <span className="pop-item__sub">Nhập nhanh (VD: 50k, 1.2tr)</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="pop-item"
+                  onClick={() => {
+                    setOpenPopover(null);
+                    openModal({ kind: 'new-tx', defaultType: 'income' });
+                  }}
+                >
+                  <span className="pop-item__tile tile--lime">
+                    <IconPlus size={15} />
+                  </span>
+                  <span className="pop-item__text">
+                    <span className="pop-item__title">Ghi thu nhập mới</span>
+                    <span className="pop-item__sub">Cộng tiền vào ví / ngân hàng</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="pop-item"
+                  onClick={() => {
+                    setOpenPopover(null);
+                    openGymView('#/home');
+                  }}
+                >
+                  <span className="pop-item__tile tile--lime">
+                    <IconDumbbell size={15} />
+                  </span>
+                  <span className="pop-item__text">
+                    <span className="pop-item__title">Bắt đầu tập Gym</span>
+                    <span className="pop-item__sub">Mở ngay openGym tracker</span>
+                  </span>
+                </button>
+              </AnimatedPopover>
+
+              {pinEnabled && (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Khóa màn hình"
+                  title="Khóa màn hình bằng PIN"
+                  onClick={lockApp}
+                >
+                  <IconLock size={17} />
+                </button>
+              )}
 
               <button
+                ref={avatarBtnRef}
                 type="button"
-                className="top__find-btn"
-                onClick={() => openModal({ kind: 'search' })}
-                aria-label="Search"
+                className="avatar-btn"
+                aria-label="Tài khoản cá nhân"
+                onClick={() => setOpenPopover(openPopover === 'account' ? null : 'account')}
               >
-                <IconSearch size={17} />
+                <RepAvatar src={profile.avatar} name={profile.name} size={40} />
               </button>
 
-              {/* + New Menu */}
-              <div ref={newAnchorRef} className="pop-anchor">
-                <MagneticButton
-                  data-pop-trigger="new"
-                  type="button"
-                  className="btn btn--primary top__new-btn"
-                  aria-expanded={openPopover === 'new'}
-                  onClick={() => setOpenPopover((p) => (p === 'new' ? null : 'new'))}
-                >
-                  <IconPlus size={16} />
-                  <span className="top__new-label">New</span>
-                </MagneticButton>
-
-                <AnimatedPopover
-                  open={openPopover === 'new'}
-                  anchorRef={newAnchorRef}
-                  align="right"
-                >
-                  <button
-                    type="button"
-                    className="pop-item"
-                    onClick={() => {
-                      setOpenPopover(null);
-                      openModal({ kind: 'new-deal' });
-                    }}
-                  >
-                    <IconPipeline size={16} />
-                    <span>Deal</span>
-                    <span className="kbd pop-item__right">D</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="pop-item"
-                    onClick={() => {
-                      setOpenPopover(null);
-                      openModal({ kind: 'new-contact' });
-                    }}
-                  >
-                    <IconContacts size={16} />
-                    <span>Contact</span>
-                    <span className="kbd pop-item__right">C</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="pop-item"
-                    onClick={() => {
-                      setOpenPopover(null);
-                      openModal({ kind: 'new-activity' });
-                    }}
-                  >
-                    <IconActivities size={16} />
-                    <span>Activity</span>
-                    <span className="kbd pop-item__right">A</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="pop-item"
-                    onClick={() => {
-                      setOpenPopover(null);
-                      openModal({ kind: 'new-quote' });
-                    }}
-                  >
-                    <IconQuotes size={16} />
-                    <span>Quote</span>
-                    <span className="kbd pop-item__right">Q</span>
-                  </button>
-                </AnimatedPopover>
-              </div>
-
-              {/* Notifications Bell */}
-              <div className="pop-anchor">
+              <AnimatedPopover
+                open={openPopover === 'account'}
+                anchorRef={avatarBtnRef}
+                align="right"
+                className="popover--account"
+                onClose={() => setOpenPopover(null)}
+              >
+                <div className="acct-head">
+                  <div className="acct-head__name">{profile.name}</div>
+                  <div className="acct-head__email">{profile.tagline}</div>
+                </div>
                 <button
-                  ref={bellBtnRef}
-                  data-pop-trigger="notif"
                   type="button"
-                  className="bell-btn"
-                  aria-expanded={openPopover === 'notif'}
-                  onClick={() => setOpenPopover((p) => (p === 'notif' ? null : 'notif'))}
-                  aria-label="Notifications"
+                  className="pop-item"
+                  onClick={() => {
+                    setOpenPopover(null);
+                    handleNav('settings', 'profile');
+                  }}
                 >
-                  <IconBell />
-                  {unreadNotifs > 0 && <span className="bell-btn__count">{unreadNotifs}</span>}
+                  <span className="pop-item__text">
+                    <span className="pop-item__title">Cài đặt cá nhân</span>
+                    <span className="pop-item__sub">Hồ sơ, tiền tệ, mã PIN</span>
+                  </span>
                 </button>
-
-                <AnimatedPopover
-                  open={openPopover === 'notif'}
-                  anchorRef={bellBtnRef}
-                  align="right"
-                  className="popover--wide"
-                >
-                  <div className="pop-head">
-                    <span className="pop-head__title">Notifications</span>
-                    {unreadNotifs > 0 && (
-                      <button
-                        type="button"
-                        className="pop-head__action"
-                        onClick={markAllNotificationsRead}
-                      >
-                        Mark all read
-                      </button>
-                    )}
-                  </div>
-                  {space.notifications.length === 0 ? (
-                    <div style={{ padding: '14px 8px', color: 'var(--faint)', fontSize: 13 }}>
-                      All caught up.
-                    </div>
-                  ) : (
-                    space.notifications.map((n) => (
-                      <button
-                        key={n.id}
-                        type="button"
-                        className="notif-item"
-                        onClick={() => {
-                          markNotificationRead(n.id);
-                          setOpenPopover(null);
-                          if (n.route) {
-                            const [, pg, sub] = n.route.split('/');
-                            handleNav((pg as PageId) || 'overview', sub);
-                          }
-                          if (n.drawer) openDrawer(n.drawer);
-                        }}
-                      >
-                        <span className={`notif-item__dot ${n.read ? 'is-read' : ''}`} />
-                        <div>
-                          <div className="notif-item__title">{n.title}</div>
-                          <div className="notif-item__meta">
-                            {n.meta} · {n.time}
-                          </div>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </AnimatedPopover>
-              </div>
-
-              {/* Account Menu */}
-              <div className="pop-anchor">
+                <button type="button" className="pop-item" onClick={handleQuickExport}>
+                  <span className="pop-item__text">
+                    <span className="pop-item__title">Sao lưu toàn bộ (JSON)</span>
+                    <span className="pop-item__sub">openGym + Tasks + Chi tiêu</span>
+                  </span>
+                </button>
                 <button
-                  ref={avatarBtnRef}
-                  data-pop-trigger="account"
                   type="button"
-                  className="avatar-btn"
-                  aria-expanded={openPopover === 'account'}
-                  onClick={() => setOpenPopover((p) => (p === 'account' ? null : 'account'))}
-                  aria-label="Account menu"
+                  className="pop-item"
+                  onClick={() => {
+                    setOpenPopover(null);
+                    toggleTheme();
+                  }}
                 >
-                  <RepAvatar src={profile.avatar} name={profile.name} size={42} />
+                  <span className="pop-item__text">
+                    <span className="pop-item__title">
+                      {theme === 'dark' ? 'Chuyển giao diện sáng' : 'Chuyển giao diện tối'}
+                    </span>
+                    <span className="pop-item__sub">Đồng bộ cả openGym</span>
+                  </span>
                 </button>
-
-                <AnimatedPopover
-                  open={openPopover === 'account'}
-                  anchorRef={avatarBtnRef}
-                  align="right"
-                >
-                  <div style={{ padding: '8px 11px 6px' }}>
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{profile.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--faint)' }}>{profile.email}</div>
-                  </div>
-                  <div className="pop-divider" />
+                {pinEnabled && (
                   <button
                     type="button"
                     className="pop-item"
                     onClick={() => {
                       setOpenPopover(null);
-                      handleNav('settings', 'profile');
+                      lockApp();
                     }}
                   >
-                    <span>Profile</span>
+                    <span className="pop-item__text">
+                      <span className="pop-item__title" style={{ color: 'var(--bad)' }}>
+                        Khóa màn hình ngay
+                      </span>
+                    </span>
                   </button>
-                  <button
-                    type="button"
-                    className="pop-item"
-                    onClick={() => {
-                      toggleTheme();
-                      setOpenPopover(null);
-                    }}
-                  >
-                    <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="pop-item"
-                    onClick={() => {
-                      setOpenPopover(null);
-                      openModal({ kind: 'shortcuts' });
-                    }}
-                  >
-                    <span>Keyboard shortcuts</span>
-                    <span className="kbd pop-item__right">?</span>
-                  </button>
-                  <div className="pop-divider" />
-                  <button
-                    type="button"
-                    className="pop-item"
-                    style={{ color: 'var(--bad)' }}
-                    onClick={() => {
-                      setOpenPopover(null);
-                      signOut();
-                    }}
-                  >
-                    <span>Sign out</span>
-                  </button>
-                </AnimatedPopover>
-              </div>
+                )}
+              </AnimatedPopover>
             </div>
-          </header>
+          </div>
 
-          <div ref={scrollRef} className="scroll">
-            <div className="page">{children}</div>
+          <div
+            ref={scrollRef}
+            className={`scroll ${isGymFullBleed ? 'scroll--gym' : ''}`}
+          >
+            <div className={isGymFullBleed ? 'page-inner page-inner--gym' : 'page-inner'}>
+              {children}
+            </div>
           </div>
         </div>
       </div>
@@ -1291,11 +1186,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         !isOpen &&
         typeof document !== 'undefined' &&
         createPortal(
-          <div
-            className="dock__tip-float"
-            role="tooltip"
-            style={{ left: dockTip.x, top: dockTip.y }}
-          >
+          <div className="dock-tip" style={{ left: dockTip.x, top: dockTip.y }}>
             {dockTip.label}
           </div>,
           document.body
