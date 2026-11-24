@@ -2176,6 +2176,8 @@
 .pop-item__text {
   display: flex;
   flex-direction: column;
+  gap: 2px;
+  flex: 1;
   min-width: 0;
 }
 
@@ -2188,7 +2190,11 @@
 
 .pop-item__sub {
   font-size: 11.5px;
+  line-height: 1.3;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .space-row,
@@ -2401,22 +2407,184 @@
   text-decoration: underline;
 }
 
-.acct-head {
-  padding: 8px 10px 10px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid var(--line);
+.pop-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.acct-head__name {
-  font-size: 14px;
+.pop-item__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--well);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.pop-item:hover .pop-item__icon {
+  background: var(--well-2);
+  color: var(--text);
+  border-color: var(--line-2);
+}
+
+.pop-item__icon--accent {
+  background: color-mix(in srgb, var(--accent) 18%, var(--well));
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  color: var(--accent-ink);
+}
+
+.pop-item__icon--danger {
+  background: color-mix(in srgb, var(--coral) 16%, transparent);
+  border-color: color-mix(in srgb, var(--coral) 32%, transparent);
+  color: var(--bad);
+}
+
+.pop-item--danger:hover {
+  background: color-mix(in srgb, var(--coral) 12%, transparent);
+}
+
+.pop-item--danger .pop-item__title {
+  color: var(--bad);
+}
+
+.pop-item__chev {
+  margin-left: auto;
+  color: var(--faint);
+  flex-shrink: 0;
+  transition: transform 0.16s var(--ease), color 0.16s var(--ease);
+}
+
+.pop-item:hover .pop-item__chev {
+  color: var(--text);
+  transform: translateX(2px);
+}
+
+.acct-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 11px;
+  margin-bottom: 6px;
+  border-radius: 14px;
+  background: var(--well);
+  border: 1px solid var(--line);
+}
+
+.acct-card__info {
+  min-width: 0;
+  flex: 1;
+}
+
+.acct-card__name {
+  font-size: 14.5px;
   font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acct-card__sub {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.db-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--glass-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.db-badge:hover {
+  background: var(--glass-3);
+  border-color: var(--line-2);
   color: var(--text);
 }
 
-.acct-head__email {
-  font-size: 12px;
+.db-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.db-badge--synced {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 35%, transparent);
+  background: color-mix(in srgb, var(--lime) 14%, transparent);
+}
+
+.db-badge--synced .db-badge__dot {
+  background: var(--good);
+}
+
+.db-badge--syncing {
+  color: var(--sky);
+  border-color: color-mix(in srgb, var(--sky) 35%, transparent);
+}
+
+.db-badge--syncing .db-badge__dot {
+  background: var(--sky);
+  animation: pulseDot 0.9s ease-in-out infinite alternate;
+}
+
+.db-badge--error {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--coral) 40%, transparent);
+  background: color-mix(in srgb, var(--coral) 14%, transparent);
+}
+
+.db-badge--error .db-badge__dot {
+  background: var(--bad);
+}
+
+.db-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--well);
+  border: 1px solid var(--line);
+}
+
+.sql-box {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border: 1px solid var(--line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.5;
   color: var(--muted);
-  margin-top: 2px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre;
 }
 
 .cmd-head {
