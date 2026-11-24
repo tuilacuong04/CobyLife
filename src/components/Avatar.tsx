@@ -1,5 +1,6 @@
 import React from 'react';
 import { AvatarTone } from '../types';
+import { assetUrl } from '../utils/assets';
 import { getInitials } from '../utils/format';
 
 interface RepAvatarProps {
@@ -10,7 +11,7 @@ interface RepAvatarProps {
 
 export const RepAvatar: React.FC<RepAvatarProps> = ({ src, name, size = 34 }) => (
   <span className="avatar" style={{ width: size, height: size }} title={name}>
-    <img src={src} alt={name} />
+    <img src={assetUrl(src)} alt={name} />
   </span>
 );
 

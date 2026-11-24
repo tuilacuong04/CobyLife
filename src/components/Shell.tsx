@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { createPortal } from 'react-dom';
 import { useCrm } from '../store/CrmContext';
 import { PageId, SpaceId } from '../types';
+import { assetUrl } from '../utils/assets';
 import { OPEN_STAGES, TODAY_ISO } from '../utils/format';
 import {
   clamp01,
@@ -612,7 +613,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   return (
     <>
       <div className="backdrop" aria-hidden="true">
-        <img src="/images/backdrop.jpg" alt="" className="backdrop__img" />
+        <img src={assetUrl('/images/backdrop.jpg')} alt="" className="backdrop__img" />
         <div className="backdrop__wash" />
       </div>
 
