@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useCrm } from '../store/CrmContext';
+import { useApp } from '../store/AppContext';
 import { ToastItem } from '../types';
 import { dur, gsap, isReducedMotion } from '../utils/motion';
 import { IconCheck } from './Icons';
@@ -53,7 +53,7 @@ const ToastRow: React.FC<{ item: ToastItem; onDismiss: (id: string) => void }> =
           className="toast__undo"
           onClick={() => handleClose(() => item.undo?.())}
         >
-          Undo
+          Hoàn tác
         </button>
       )}
     </div>
@@ -61,7 +61,7 @@ const ToastRow: React.FC<{ item: ToastItem; onDismiss: (id: string) => void }> =
 };
 
 export const Toasts: React.FC = () => {
-  const { toasts, dismissToast } = useCrm();
+  const { toasts, dismissToast } = useApp();
   if (toasts.length === 0 || typeof document === 'undefined') return null;
 
   return createPortal(

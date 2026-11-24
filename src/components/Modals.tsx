@@ -1,931 +1,854 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { useCrm } from '../store/CrmContext';
-import { ActivityType, DealSource, DealStage, ModalState } from '../types';
-import { dur, gsap, isMobileViewport } from '../utils/motion';
-import { SlidingSeg } from './Motion';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useApp } from '../store/AppContext';
 import {
-  addDays,
-  formatKrCompact,
-  formatKrExact,
-  formatNumber,
-  OPEN_STAGES,
-  quoteSubtotal,
-  quoteTotalWithVat,
-  quoteVat,
-  STAGE_META,
-  TODAY_ISO,
+  AccentTone,
+  TaskCategory,
+  TaskPriority,
+  TaskRecurrence,
+  TaskStatus,
+  TxType,
+  WalletKind,
+} from '../types';
+import {
+  formatMoney,
+  formatShortDateVi,
+  localIsoDate,
+  parseSmartAmount,
+  TASK_CATEGORY_META,
+  WALLET_KIND_LABEL,
 } from '../utils/format';
+import { animateErrorShake } from '../utils/motion';
+import { AnimatedModal } from './Motion';
 import {
-  IconActivityKind,
-  IconBuilding,
-  IconChevronRight,
   IconClose,
-  IconContacts,
-  IconPipeline,
+  IconDumbbell,
   IconPlus,
-  IconQuotes,
   IconSearch,
+  IconTasks,
+  IconWallet,
 } from './Icons';
 
-const SOURCES: DealSource[] = ['Website', 'Referral', 'Trade show', 'Cold call', 'Partner'];
-const TIMES = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
-
-export const Modals: React.FC = () => {
-  const { modal, closeModal } = useCrm();
-  const [rendered, setRendered] = useState<ModalState>(modal);
-  const scrimRef = useRef<HTMLDivElement>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (modal) setRendered(modal);
-  }, [modal]);
-
-  useLayoutEffect(() => {
-    const scrim = scrimRef.current;
-    const panel = wrapRef.current?.firstElementChild as HTMLElement | null;
-    if (!rendered || !scrim || !panel) return;
-    const mobile = isMobileViewport();
-
-    if (modal) {
-      gsap.fromTo(scrim, { opacity: 0 }, { opacity: 1, duration: dur(0.3), overwrite: true });
-      if (mobile) {
-        gsap.fromTo(
-          panel,
-          { yPercent: 100 },
-          { yPercent: 0, duration: dur(0.55), ease: 'expo.out', overwrite: true }
-        );
-      } else {
-        gsap.fromTo(
-          panel,
-          { opacity: 0, y: 14, scale: 0.92 },
-          {
-            opacity: 1,
-            y: 0,
-            scale: 1,
-            duration: dur(0.5),
-            ease: 'expo.out',
-            overwrite: true,
-            clearProps: 'transform',
-          }
-        );
-      }
-    } else {
-      gsap.to(scrim, { opacity: 0, duration: dur(0.22), overwrite: true });
-      if (mobile) {
-        gsap.to(panel, {
-          yPercent: 100,
-          duration: dur(0.3),
-          ease: 'power3.in',
-          overwrite: true,
-          onComplete: () => setRendered(null),
-        });
-      } else {
-        gsap.to(panel, {
-          opacity: 0,
-          y: -8,
-          scale: 0.97,
-          duration: dur(0.2),
-          ease: 'power2.in',
-          overwrite: true,
-          onComplete: () => setRendered(null),
-        });
-      }
-    }
-  }, [modal, rendered]);
-
-  if (!rendered || typeof document === 'undefined') return null;
-
-  return createPortal(
-    <div className="layer layer--modal" role="dialog" aria-modal="true">
-      <div ref={scrimRef} className="scrim-bg" onMouseDown={closeModal} />
-      <div ref={wrapRef} className="modal-wrap">
-        {rendered.kind === 'search' && <SearchModal />}
-        {rendered.kind === 'shortcuts' && <ShortcutsModal />}
-        {rendered.kind === 'new-deal' && (
-          <NewDealModal
-            defaultCompanyId={rendered.defaultCompanyId}
-            defaultContactId={rendered.defaultContactId}
-          />
-        )}
-        {rendered.kind === 'new-contact' && (
-          <NewContactModal defaultCompanyName={rendered.defaultCompanyName} />
-        )}
-        {rendered.kind === 'new-activity' && (
-          <NewActivityModal
-            defaultDealId={rendered.defaultDealId}
-            defaultContactId={rendered.defaultContactId}
-            defaultType={rendered.defaultType}
-          />
-        )}
-        {rendered.kind === 'new-quote' && <NewQuoteModal defaultDealId={rendered.defaultDealId} />}
-      </div>
-    </div>,
-    document.body
-  );
-};
-
-interface SearchEntry {
-  id: string;
-  kind: 'deal' | 'contact' | 'company' | 'quote';
-  title: string;
-  meta: string;
-  haystack: string;
-  onSelect: () => void;
-}
-
-const SearchModal: React.FC = () => {
-  const { space, closeModal, navigate, openDrawer } = useCrm();
-  const [query, setQuery] = useState('');
-  const [selectedIdx, setSelectedIdx] = useState(0);
+const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { state, gym, navigate, openGymView, openDrawer, openModal } = useApp();
+  const [q, setQ] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  const allEntries = useMemo<SearchEntry[]>(() => {
-    const companyMap = new Map(space.companies.map((c) => [c.id, c]));
-    const dealMap = new Map(space.deals.map((d) => [d.id, d]));
+  const term = q.trim().toLowerCase();
 
-    const deals: SearchEntry[] = space.deals.map((d) => {
-      const comp = companyMap.get(d.companyId)?.name || '';
-      return {
-        id: `d-${d.id}`,
-        kind: 'deal',
-        title: d.title,
-        meta: `${comp} · ${formatKrCompact(d.value)} · ${STAGE_META[d.stage].label}`,
-        haystack: `${d.title} ${comp} ${STAGE_META[d.stage].label} ${d.source}`.toLowerCase(),
-        onSelect: () => {
-          closeModal();
-          navigate('pipeline', 'board');
-          openDrawer({ kind: 'deal', id: d.id });
-        },
-      };
+  const matchingTasks = useMemo(() => {
+    const list = state.tasks.filter(
+      (t) =>
+        !term ||
+        t.title.toLowerCase().includes(term) ||
+        t.notes.toLowerCase().includes(term) ||
+        TASK_CATEGORY_META[t.category].label.toLowerCase().includes(term)
+    );
+    return list.slice(0, 5);
+  }, [state.tasks, term]);
+
+  const matchingTx = useMemo(() => {
+    const catMap = new Map(state.finance.categories.map((c) => [c.id, c.name]));
+    const list = state.finance.transactions.filter((tx) => {
+      if (!term) return true;
+      const cat = catMap.get(tx.categoryId) || '';
+      return tx.note.toLowerCase().includes(term) || cat.toLowerCase().includes(term);
     });
+    return list.slice(0, 5);
+  }, [state.finance.transactions, state.finance.categories, term]);
 
-    const contacts: SearchEntry[] = space.contacts.map((c) => {
-      const comp = companyMap.get(c.companyId)?.name || '';
-      return {
-        id: `p-${c.id}`,
-        kind: 'contact',
-        title: c.name,
-        meta: `${c.role} · ${comp} · ${c.status}`,
-        haystack: `${c.name} ${c.role} ${comp} ${c.email}`.toLowerCase(),
-        onSelect: () => {
-          closeModal();
-          navigate('contacts', 'people');
-          openDrawer({ kind: 'contact', id: c.id });
-        },
-      };
-    });
-
-    const companies: SearchEntry[] = space.companies.map((c) => ({
-      id: `c-${c.id}`,
-      kind: 'company',
-      title: c.name,
-      meta: `${c.industry} · ${c.city} · ${c.staff} staff`,
-      haystack: `${c.name} ${c.industry} ${c.city}`.toLowerCase(),
-      onSelect: () => {
-        closeModal();
-        navigate('contacts', 'companies', { q: c.name });
-      },
-    }));
-
-    const quotes: SearchEntry[] = space.quotes.map((q) => {
-      const deal = dealMap.get(q.dealId);
-      const comp = companyMap.get(q.companyId)?.name || '';
-      return {
-        id: `q-${q.id}`,
-        kind: 'quote',
-        title: q.number,
-        meta: `${deal?.title || 'Quote'} · ${comp} · ${formatKrCompact(quoteSubtotal(q.lines))}`,
-        haystack: `${q.number} ${deal?.title || ''} ${comp} ${q.status}`.toLowerCase(),
-        onSelect: () => {
-          closeModal();
-          navigate('quotes', 'all');
-          openDrawer({ kind: 'quote', id: q.id });
-        },
-      };
-    });
-
-    return [...deals, ...contacts, ...companies, ...quotes];
-  }, [space, closeModal, navigate, openDrawer]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return allEntries.slice(0, 12);
-    return allEntries.filter((e) => e.haystack.includes(q)).slice(0, 18);
-  }, [allEntries, query]);
-
-  useEffect(() => {
-    setSelectedIdx(0);
-  }, [query]);
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedIdx((i) => Math.min(filtered.length - 1, i + 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedIdx((i) => Math.max(0, i - 1));
-    } else if (e.key === 'Enter' && filtered[selectedIdx]) {
-      e.preventDefault();
-      filtered[selectedIdx].onSelect();
-    }
-  };
+  const matchingRoutines = useMemo(() => {
+    return gym.routines
+      .filter((r) => !term || r.name.toLowerCase().includes(term))
+      .slice(0, 4);
+  }, [gym.routines, term]);
 
   return (
-    <div className="modal" onKeyDown={onKeyDown}>
-      <div className="modal__head">
-        <h2 className="modal__title">Search</h2>
-        <button type="button" className="icon-circle" onClick={closeModal} aria-label="Close">
+    <AnimatedModal open onClose={onClose} size="lg" label="Tìm kiếm nhanh">
+      <div className="cmd-head">
+        <IconSearch size={17} />
+        <input
+          ref={inputRef}
+          className="cmd-input"
+          placeholder="Tìm task, chi tiêu, lịch tập openGym hoặc lệnh nhanh..."
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Đóng">
           <IconClose size={16} />
         </button>
       </div>
 
-      <div style={{ position: 'relative' }}>
-        <span
-          style={{
-            position: 'absolute',
-            left: 14,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            color: 'var(--faint)',
-            display: 'grid',
-            placeItems: 'center',
-          }}
-        >
-          <IconSearch size={16} />
-        </span>
-        <input
-          ref={inputRef}
-          className="input"
-          style={{ paddingLeft: 42 }}
-          placeholder="Search deals, people, companies, quotes..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
-
-      <div className="search-results">
-        {filtered.length === 0 ? (
-          <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--faint)' }}>
-            No matching records for &ldquo;{query}&rdquo;.
+      <div className="cmd-body">
+        {!term && (
+          <div className="cmd-group">
+            <div className="cmd-group__label">Thao tác nhanh</div>
+            <button
+              type="button"
+              className="cmd-row"
+              onClick={() => openModal({ kind: 'new-task' })}
+            >
+              <span className="cmd-row__title">
+                <IconPlus size={14} style={{ marginRight: 6 }} />
+                Tạo task cá nhân mới
+              </span>
+              <span className="cmd-row__meta">Tasks</span>
+            </button>
+            <button
+              type="button"
+              className="cmd-row"
+              onClick={() => openModal({ kind: 'new-tx', defaultType: 'expense' })}
+            >
+              <span className="cmd-row__title">
+                <IconWallet size={14} style={{ marginRight: 6 }} />
+                Ghi chi tiêu nhanh
+              </span>
+              <span className="cmd-row__meta">Chi tiêu</span>
+            </button>
+            <button
+              type="button"
+              className="cmd-row"
+              onClick={() => {
+                onClose();
+                openGymView('#/home');
+              }}
+            >
+              <span className="cmd-row__title">
+                <IconDumbbell size={14} style={{ marginRight: 6 }} />
+                Vào openGym — Bắt đầu buổi tập
+              </span>
+              <span className="cmd-row__meta">Gym</span>
+            </button>
           </div>
-        ) : (
-          filtered.map((item, idx) => (
+        )}
+
+        {matchingRoutines.length > 0 && (
+          <div className="cmd-group">
+            <div className="cmd-group__label">Gym · Lịch tập openGym</div>
+            {matchingRoutines.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                className="cmd-row"
+                onClick={() => {
+                  onClose();
+                  openGymView('#/plan');
+                }}
+              >
+                <span className="cmd-row__title">{r.name}</span>
+                <span className="cmd-row__meta">{r.exerciseCount} bài tập</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {matchingTasks.length > 0 && (
+          <div className="cmd-group">
+            <div className="cmd-group__label">Task cá nhân</div>
+            {matchingTasks.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className="cmd-row"
+                onClick={() => {
+                  onClose();
+                  navigate('tasks');
+                  openDrawer({ kind: 'task', id: t.id });
+                }}
+              >
+                <span className="cmd-row__title">
+                  <IconTasks size={14} style={{ marginRight: 6 }} />
+                  {t.title}
+                </span>
+                <span className="cmd-row__meta">{formatShortDateVi(t.dueDate)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {matchingTx.length > 0 && (
+          <div className="cmd-group">
+            <div className="cmd-group__label">Giao dịch chi tiêu</div>
+            {matchingTx.map((tx) => (
+              <button
+                key={tx.id}
+                type="button"
+                className="cmd-row"
+                onClick={() => {
+                  onClose();
+                  navigate('finance', 'transactions');
+                  openDrawer({ kind: 'transaction', id: tx.id });
+                }}
+              >
+                <span className="cmd-row__title">{tx.note || 'Giao dịch'}</span>
+                <span className="cmd-row__meta">
+                  {tx.type === 'expense' ? '-' : tx.type === 'income' ? '+' : ''}
+                  {formatMoney(tx.amount, state.settings.currency)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {term && matchingTasks.length === 0 && matchingTx.length === 0 && matchingRoutines.length === 0 && (
+          <div className="empty-state" style={{ padding: '28px 12px' }}>
+            Không tìm thấy kết quả nào cho &ldquo;{q}&rdquo;.
+          </div>
+        )}
+      </div>
+    </AnimatedModal>
+  );
+};
+
+const NewTaskModal: React.FC<{
+  defaultStatus?: TaskStatus;
+  defaultCategory?: TaskCategory;
+  defaultDate?: string;
+  onClose: () => void;
+}> = ({ defaultStatus = 'todo', defaultCategory = 'personal', defaultDate, onClose }) => {
+  const { createTask } = useApp();
+  const boxRef = useRef<HTMLFormElement>(null);
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState<TaskCategory>(defaultCategory);
+  const [priority, setPriority] = useState<TaskPriority>('medium');
+  const [status, setStatus] = useState<TaskStatus>(defaultStatus);
+  const [dueDate, setDueDate] = useState(defaultDate ?? localIsoDate());
+  const [dueTime, setDueTime] = useState('');
+  const [recurrence, setRecurrence] = useState<TaskRecurrence>('none');
+  const [notes, setNotes] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      setError('Vui lòng nhập tiêu đề công việc.');
+      animateErrorShake(boxRef.current);
+      return;
+    }
+    createTask({
+      title: title.trim(),
+      notes: notes.trim(),
+      status,
+      priority,
+      category,
+      dueDate,
+      dueTime: dueTime || undefined,
+      recurrence,
+      pinned: priority === 'high',
+    });
+    onClose();
+  };
+
+  return (
+    <AnimatedModal open onClose={onClose} label="Thêm task mới">
+      <div className="modal__head">
+        <h2 className="modal__title">Thêm task cá nhân mới</h2>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Đóng">
+          <IconClose size={16} />
+        </button>
+      </div>
+      <form ref={boxRef} className="modal__body form-stack" onSubmit={handleSubmit}>
+        <label className="field">
+          <span className="field__label">Tên công việc</span>
+          <input
+            className="input"
+            autoFocus
+            placeholder="VD: Tập chân 60 phút, Thanh toán tiền mạng..."
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              if (error) setError('');
+            }}
+          />
+          {error && <span className="field__error">{error}</span>}
+        </label>
+
+        <div className="form-grid">
+          <label className="field">
+            <span className="field__label">Danh mục</span>
+            <select
+              className="select"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as TaskCategory)}
+            >
+              {(Object.keys(TASK_CATEGORY_META) as TaskCategory[]).map((cat) => (
+                <option key={cat} value={cat}>
+                  {TASK_CATEGORY_META[cat].label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span className="field__label">Độ ưu tiên</span>
+            <select
+              className="select"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as TaskPriority)}
+            >
+              <option value="high">Ưu tiên cao</option>
+              <option value="medium">Trung bình</option>
+              <option value="low">Thấp</option>
+            </select>
+          </label>
+          <label className="field">
+            <span className="field__label">Ngày hạn</span>
+            <input
+              type="date"
+              className="input"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span className="field__label">Giờ (tùy chọn)</span>
+            <input
+              type="time"
+              className="input"
+              value={dueTime}
+              onChange={(e) => setDueTime(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span className="field__label">Trạng thái</span>
+            <select
+              className="select"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as TaskStatus)}
+            >
+              <option value="todo">Cần làm</option>
+              <option value="doing">Đang làm</option>
+              <option value="done">Hoàn thành</option>
+            </select>
+          </label>
+          <label className="field">
+            <span className="field__label">Lặp lại</span>
+            <select
+              className="select"
+              value={recurrence}
+              onChange={(e) => setRecurrence(e.target.value as TaskRecurrence)}
+            >
+              <option value="none">Không lặp</option>
+              <option value="daily">Hàng ngày</option>
+              <option value="weekly">Hàng tuần</option>
+              <option value="monthly">Hàng tháng</option>
+            </select>
+          </label>
+        </div>
+
+        <label className="field">
+          <span className="field__label">Ghi chú</span>
+          <textarea
+            className="textarea"
+            rows={3}
+            placeholder="Chi tiết cần nhớ..."
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </label>
+
+        <div className="modal__foot">
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Hủy
+          </button>
+          <button type="submit" className="btn btn--primary">
+            Tạo task
+          </button>
+        </div>
+      </form>
+    </AnimatedModal>
+  );
+};
+
+const NewTransactionModal: React.FC<{
+  defaultType?: TxType;
+  defaultWalletId?: string;
+  defaultCategoryId?: string;
+  onClose: () => void;
+}> = ({ defaultType = 'expense', defaultWalletId, defaultCategoryId, onClose }) => {
+  const { state, createTransaction } = useApp();
+  const boxRef = useRef<HTMLFormElement>(null);
+  const [type, setType] = useState<TxType>(defaultType);
+  const [amountRaw, setAmountRaw] = useState('');
+  const [walletId, setWalletId] = useState(
+    defaultWalletId || state.finance.wallets[0]?.id || ''
+  );
+  const [toWalletId, setToWalletId] = useState(
+    state.finance.wallets.find((w) => w.id !== (defaultWalletId || state.finance.wallets[0]?.id))
+      ?.id || ''
+  );
+  const [categoryId, setCategoryId] = useState(() => {
+    if (defaultCategoryId) return defaultCategoryId;
+    const match = state.finance.categories.find((c) =>
+      defaultType === 'income' ? c.kind === 'income' : c.kind === 'expense'
+    );
+    return match?.id || state.finance.categories[0]?.id || '';
+  });
+  const [date, setDate] = useState(localIsoDate());
+  const [note, setNote] = useState('');
+  const [error, setError] = useState('');
+
+  const parsedAmount = parseSmartAmount(amountRaw);
+  const filteredCats = state.finance.categories.filter((c) =>
+    type === 'income' ? c.kind === 'income' : c.kind === 'expense'
+  );
+
+  const handleTypeChange = (next: TxType) => {
+    setType(next);
+    const match = state.finance.categories.find((c) =>
+      next === 'income' ? c.kind === 'income' : c.kind === 'expense'
+    );
+    if (match) setCategoryId(match.id);
+    if (next === 'transfer') {
+      const other = state.finance.wallets.find((w) => w.id !== walletId);
+      if (other) setToWalletId(other.id);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (parsedAmount <= 0) {
+      setError('Vui lòng nhập số tiền hợp lệ (VD: 50k, 1.5tr, 250000).');
+      animateErrorShake(boxRef.current);
+      return;
+    }
+    if (!walletId) {
+      setError('Vui lòng chọn ví.');
+      return;
+    }
+    if (type === 'transfer' && (!toWalletId || toWalletId === walletId)) {
+      setError('Ví đích phải khác ví nguồn.');
+      animateErrorShake(boxRef.current);
+      return;
+    }
+    createTransaction({
+      type,
+      amount: parsedAmount,
+      categoryId,
+      walletId,
+      toWalletId: type === 'transfer' ? toWalletId : undefined,
+      date,
+      note: note.trim() || (type === 'transfer' ? 'Chuyển tiền giữa ví' : ''),
+    });
+    onClose();
+  };
+
+  return (
+    <AnimatedModal open onClose={onClose} label="Ghi giao dịch mới">
+      <div className="modal__head">
+        <h2 className="modal__title">Ghi giao dịch tài chính</h2>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Đóng">
+          <IconClose size={16} />
+        </button>
+      </div>
+      <form ref={boxRef} className="modal__body form-stack" onSubmit={handleSubmit}>
+        <div className="seg" style={{ width: '100%' }}>
+          {(
+            [
+              { id: 'expense', label: 'Chi tiêu' },
+              { id: 'income', label: 'Thu nhập' },
+              { id: 'transfer', label: 'Chuyển ví' },
+            ] as { id: TxType; label: string }[]
+          ).map((item) => (
             <button
               key={item.id}
               type="button"
-              className={`search-row ${idx === selectedIdx ? 'is-selected' : ''}`}
-              onMouseEnter={() => setSelectedIdx(idx)}
-              onClick={item.onSelect}
+              className={`seg__btn ${type === item.id ? 'is-active' : ''}`}
+              style={{ flex: 1 }}
+              onClick={() => handleTypeChange(item.id)}
             >
-              <span style={{ color: 'var(--muted)', display: 'grid', placeItems: 'center' }}>
-                {item.kind === 'deal' && <IconPipeline size={17} />}
-                {item.kind === 'contact' && <IconContacts size={17} />}
-                {item.kind === 'company' && <IconBuilding size={17} />}
-                {item.kind === 'quote' && <IconQuotes size={17} />}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{item.title}</div>
-                <div style={{ fontSize: 12, color: 'var(--faint)' }}>{item.meta}</div>
-              </div>
-              <IconChevronRight size={15} />
+              {item.label}
             </button>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
 
-      <div className="search-modal__foot">
-        <span className="kbd">↑</span>
-        <span className="kbd">↓</span>
-        <span>to move</span>
-        <span>·</span>
-        <span className="kbd">Enter</span>
-        <span>to open</span>
-        <span>·</span>
-        <span className="kbd">Esc</span>
-        <span>to close</span>
-        <span>·</span>
-        <span>{allEntries.length} records</span>
-      </div>
-    </div>
-  );
-};
-
-const ShortcutsModal: React.FC = () => {
-  const { closeModal } = useCrm();
-  const shortcuts = [
-    { label: 'Search everything', keys: ['⌘', 'K'] },
-    { label: 'Quick search', keys: ['/'] },
-    { label: 'Fold or expand the sidebar', keys: ['⌘', 'B'] },
-    { label: 'New deal', keys: ['N'] },
-    { label: 'Go to Overview / Pipeline / Contacts', keys: ['G', 'then', 'O / P / C'] },
-    { label: 'Go to Activities / Quotes / Team / Reports', keys: ['G', 'then', 'A / Q / T / R'] },
-    { label: 'Move focused deal card between stages', keys: ['←', '→'] },
-    { label: 'This list', keys: ['?'] },
-  ];
-
-  return (
-    <div className="modal">
-      <div className="modal__head">
-        <h2 className="modal__title">Keyboard shortcuts</h2>
-        <button type="button" className="icon-circle" onClick={closeModal} aria-label="Close">
-          <IconClose size={16} />
-        </button>
-      </div>
-
-      <div className="shortcut-list">
-        {shortcuts.map((s) => (
-          <div key={s.label} className="shortcut-row">
-            <span>{s.label}</span>
-            <span className="shortcut-keys">
-              {s.keys.map((k, i) =>
-                k === 'then' ? (
-                  <span key={i} style={{ fontSize: 11.5, color: 'var(--faint)' }}>
-                    then
-                  </span>
-                ) : (
-                  <span key={i} className="kbd">
-                    {k}
-                  </span>
-                )
-              )}
-            </span>
+        <label className="field">
+          <span className="field__label">
+            Số tiền{' '}
+            {parsedAmount > 0 && (
+              <strong style={{ color: 'var(--accent-ink)', marginLeft: 6 }}>
+                = {formatMoney(parsedAmount, state.settings.currency)}
+              </strong>
+            )}
+          </span>
+          <input
+            className="input"
+            autoFocus
+            placeholder="Nhập nhanh: 50k, 1.5tr, 250000..."
+            value={amountRaw}
+            onChange={(e) => {
+              setAmountRaw(e.target.value);
+              if (error) setError('');
+            }}
+          />
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+            {['35k', '50k', '100k', '250k', '500k', '1tr'].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                className="chip"
+                style={{ height: 26, fontSize: 12 }}
+                onClick={() => {
+                  setAmountRaw(preset);
+                  if (error) setError('');
+                }}
+              >
+                {preset}
+              </button>
+            ))}
           </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const NewDealModal: React.FC<{ defaultCompanyId?: string; defaultContactId?: string }> = ({
-  defaultCompanyId,
-  defaultContactId,
-}) => {
-  const { space, closeModal, createDeal, openDrawer } = useCrm();
-  const [title, setTitle] = useState('');
-  const [companyId, setCompanyId] = useState(defaultCompanyId || space.companies[0]?.id || '');
-  const [value, setValue] = useState('145000');
-  const [stage, setStage] = useState<DealStage>('lead');
-  const [closeDate, setCloseDate] = useState(addDays(TODAY_ISO, 28));
-  const [ownerId, setOwnerId] = useState(space.reps[0]?.id || '');
-  const [source, setSource] = useState<DealSource>('Website');
-  const [error, setError] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) {
-      setError('Enter a deal name.');
-      return;
-    }
-    const companyContact =
-      defaultContactId || space.contacts.find((c) => c.companyId === companyId)?.id;
-    const created = createDeal({
-      title: title.trim(),
-      companyId,
-      contactId: companyContact,
-      ownerId,
-      stage,
-      value: Math.max(0, Number(value) || 0),
-      closeDate,
-      source,
-      notes: '',
-    });
-    closeModal();
-    openDrawer({ kind: 'deal', id: created.id });
-  };
-
-  return (
-    <div className="modal">
-      <div className="modal__head">
-        <h2 className="modal__title">New deal</h2>
-        <button type="button" className="icon-circle" onClick={closeModal} aria-label="Close">
-          <IconClose size={16} />
-        </button>
-      </div>
-
-      <form className="form-stack" onSubmit={handleSubmit}>
-        <label className="field">
-          <span className="field__label">Deal name</span>
-          <input
-            className="input"
-            placeholder="e.g. Roof array expansion"
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              if (error) setError('');
-            }}
-            autoFocus
-          />
           {error && <span className="field__error">{error}</span>}
         </label>
 
         <div className="form-grid">
           <label className="field">
-            <span className="field__label">Company</span>
-            <select className="select" value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
-              {space.companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field">
-            <span className="field__label">Value (kr)</span>
-            <input
-              className="input"
-              type="number"
-              min="0"
-              step="1000"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-            />
-          </label>
-        </div>
-
-        <div className="form-grid">
-          <label className="field">
-            <span className="field__label">Stage</span>
+            <span className="field__label">{type === 'transfer' ? 'Từ ví' : 'Ví / Tài khoản'}</span>
             <select
               className="select"
-              value={stage}
-              onChange={(e) => setStage(e.target.value as DealStage)}
+              value={walletId}
+              onChange={(e) => setWalletId(e.target.value)}
             >
-              {OPEN_STAGES.map((st) => (
-                <option key={st} value={st}>
-                  {STAGE_META[st].label} ({Math.round(STAGE_META[st].prob * 100)}%)
+              {state.finance.wallets.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
                 </option>
               ))}
             </select>
           </label>
 
+          {type === 'transfer' ? (
+            <label className="field">
+              <span className="field__label">Đến ví</span>
+              <select
+                className="select"
+                value={toWalletId}
+                onChange={(e) => setToWalletId(e.target.value)}
+              >
+                {state.finance.wallets
+                  .filter((w) => w.id !== walletId)
+                  .map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          ) : (
+            <label className="field">
+              <span className="field__label">Danh mục</span>
+              <select
+                className="select"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+              >
+                {filteredCats.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
           <label className="field">
-            <span className="field__label">Expected close</span>
+            <span className="field__label">Ngày</span>
             <input
-              className="input"
               type="date"
-              value={closeDate}
-              onChange={(e) => setCloseDate(e.target.value)}
-            />
-          </label>
-        </div>
-
-        <div className="form-grid">
-          <label className="field">
-            <span className="field__label">Owner</span>
-            <select className="select" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-              {space.reps.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="field">
-            <span className="field__label">Source</span>
-            <select
-              className="select"
-              value={source}
-              onChange={(e) => setSource(e.target.value as DealSource)}
-            >
-              {SOURCES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div className="modal__foot">
-          <button type="button" className="btn btn--ghost" onClick={closeModal}>
-            Cancel
-          </button>
-          <button type="submit" className="btn btn--primary">
-            Create deal
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-};
-
-const NewContactModal: React.FC<{ defaultCompanyName?: string }> = ({ defaultCompanyName }) => {
-  const { space, closeModal, createContact, openDrawer } = useCrm();
-  const [name, setName] = useState('');
-  const [role, setRole] = useState('');
-  const [companyName, setCompanyName] = useState(defaultCompanyName || '');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [error, setError] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      setError('Enter a full name.');
-      return;
-    }
-    const created = createContact({ name, role, companyName, email, phone });
-    closeModal();
-    openDrawer({ kind: 'contact', id: created.id });
-  };
-
-  return (
-    <div className="modal">
-      <div className="modal__head">
-        <h2 className="modal__title">New contact</h2>
-        <button type="button" className="icon-circle" onClick={closeModal} aria-label="Close">
-          <IconClose size={16} />
-        </button>
-      </div>
-
-      <form className="form-stack" onSubmit={handleSubmit}>
-        <div className="form-grid">
-          <label className="field">
-            <span className="field__label">Full name</span>
-            <input
               className="input"
-              placeholder="e.g. Astrid Lindholm"
-              value={name}
-              onChange={(e) => {
-                setName(e.target.value);
-                if (error) setError('');
-              }}
-              autoFocus
-            />
-            {error && <span className="field__error">{error}</span>}
-          </label>
-
-          <label className="field">
-            <span className="field__label">Job title</span>
-            <input
-              className="input"
-              placeholder="e.g. Operations manager"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-            />
-          </label>
-        </div>
-
-        <label className="field">
-          <span className="field__label">Company</span>
-          <input
-            className="input"
-            list="sylva-company-list"
-            placeholder="Pick existing or type a new company"
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-          />
-          <datalist id="sylva-company-list">
-            {space.companies.map((c) => (
-              <option key={c.id} value={c.name} />
-            ))}
-          </datalist>
-          <span className="field__hint">A new name creates the company too.</span>
-        </label>
-
-        <div className="form-grid">
-          <label className="field">
-            <span className="field__label">Email</span>
-            <input
-              className="input"
-              type="email"
-              placeholder="name@company.no"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </label>
-
-          <label className="field">
-            <span className="field__label">Phone</span>
-            <input
-              className="input"
-              type="tel"
-              placeholder="+47 900 00 000"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </label>
-        </div>
-
-        <div className="modal__foot">
-          <button type="button" className="btn btn--ghost" onClick={closeModal}>
-            Cancel
-          </button>
-          <button type="submit" className="btn btn--primary">
-            Add contact
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-};
-
-const NewActivityModal: React.FC<{
-  defaultDealId?: string;
-  defaultContactId?: string;
-  defaultType?: ActivityType;
-}> = ({ defaultDealId, defaultContactId, defaultType }) => {
-  const { space, closeModal, createActivity } = useCrm();
-  const [type, setType] = useState<ActivityType>(defaultType || 'call');
-  const [title, setTitle] = useState('');
-  const [dealId, setDealId] = useState(defaultDealId || '');
-  const [date, setDate] = useState(TODAY_ISO);
-  const [time, setTime] = useState('11:00');
-  const [ownerId, setOwnerId] = useState(space.reps[0]?.id || '');
-  const [error, setError] = useState('');
-
-  const openDeals = space.deals.filter((d) => OPEN_STAGES.includes(d.stage));
-  const companyMap = new Map(space.companies.map((c) => [c.id, c.name]));
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) {
-      setError('Describe what you want to do.');
-      return;
-    }
-    createActivity({
-      type,
-      title: title.trim(),
-      dealId: dealId || undefined,
-      contactId: defaultContactId,
-      ownerId,
-      date,
-      time,
-      durationHours: type === 'meeting' ? 2 : 1,
-    });
-    closeModal();
-  };
-
-  return (
-    <div className="modal">
-      <div className="modal__head">
-        <h2 className="modal__title">Plan activity</h2>
-        <button type="button" className="icon-circle" onClick={closeModal} aria-label="Close">
-          <IconClose size={16} />
-        </button>
-      </div>
-
-      <form className="form-stack" onSubmit={handleSubmit}>
-        <div className="field">
-          <span className="field__label">Type</span>
-          <SlidingSeg<ActivityType>
-            ariaLabel="Activity type"
-            activeId={type}
-            onChange={setType}
-            items={(['call', 'meeting', 'email', 'task'] as ActivityType[]).map((t) => ({
-              id: t,
-              label: t.charAt(0).toUpperCase() + t.slice(1),
-              icon: <IconActivityKind type={t} size={13} />,
-            }))}
-          />
-        </div>
-
-        <label className="field">
-          <span className="field__label">What</span>
-          <input
-            className="input"
-            placeholder="e.g. Walk through financing proposal"
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              if (error) setError('');
-            }}
-            autoFocus
-          />
-          {error && <span className="field__error">{error}</span>}
-        </label>
-
-        <label className="field">
-          <span className="field__label">Deal</span>
-          <select className="select" value={dealId} onChange={(e) => setDealId(e.target.value)}>
-            <option value="">No deal</option>
-            {openDeals.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.title} — {companyMap.get(d.companyId)}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="form-grid">
-          <label className="field">
-            <span className="field__label">Day</span>
-            <input
-              className="input"
-              type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
             />
           </label>
 
           <label className="field">
-            <span className="field__label">Time</span>
-            <select className="select" value={time} onChange={(e) => setTime(e.target.value)}>
-              {TIMES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+            <span className="field__label">Ghi chú</span>
+            <input
+              className="input"
+              placeholder="VD: Cơm trưa, Whey, Tiền xăng..."
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="modal__foot">
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Hủy
+          </button>
+          <button type="submit" className="btn btn--primary">
+            Lưu giao dịch
+          </button>
+        </div>
+      </form>
+    </AnimatedModal>
+  );
+};
+
+const NewWalletModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { createWallet } = useApp();
+  const [name, setName] = useState('');
+  const [kind, setKind] = useState<WalletKind>('bank');
+  const [balanceRaw, setBalanceRaw] = useState('');
+  const [tone, setTone] = useState<AccentTone>('sky');
+  const [note, setNote] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    createWallet({
+      name: name.trim(),
+      kind,
+      initialBalance: parseSmartAmount(balanceRaw),
+      tone,
+      note: note.trim() || undefined,
+    });
+    onClose();
+  };
+
+  return (
+    <AnimatedModal open onClose={onClose} label="Thêm ví mới">
+      <div className="modal__head">
+        <h2 className="modal__title">Thêm ví / tài khoản mới</h2>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Đóng">
+          <IconClose size={16} />
+        </button>
+      </div>
+      <form className="modal__body form-stack" onSubmit={handleSubmit}>
+        <label className="field">
+          <span className="field__label">Tên ví / ngân hàng</span>
+          <input
+            className="input"
+            autoFocus
+            placeholder="VD: Techcombank, ZaloPay, Quỹ du lịch..."
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+        <div className="form-grid">
+          <label className="field">
+            <span className="field__label">Loại ví</span>
+            <select
+              className="select"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as WalletKind)}
+            >
+              {(Object.keys(WALLET_KIND_LABEL) as WalletKind[]).map((k) => (
+                <option key={k} value={k}>
+                  {WALLET_KIND_LABEL[k]}
                 </option>
               ))}
             </select>
           </label>
+          <label className="field">
+            <span className="field__label">Số dư ban đầu (VD: 5tr)</span>
+            <input
+              className="input"
+              placeholder="0"
+              value={balanceRaw}
+              onChange={(e) => setBalanceRaw(e.target.value)}
+            />
+          </label>
         </div>
-
         <label className="field">
-          <span className="field__label">Who</span>
-          <select className="select" value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-            {space.reps.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
+          <span className="field__label">Màu thẻ</span>
+          <div className="seg">
+            {(['sky', 'lime', 'coral', 'sand'] as AccentTone[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`seg__btn ${tone === t ? 'is-active' : ''}`}
+                onClick={() => setTone(t)}
+              >
+                {t}
+              </button>
             ))}
-          </select>
+          </div>
         </label>
-
+        <label className="field">
+          <span className="field__label">Ghi chú</span>
+          <input
+            className="input"
+            placeholder="Mục đích sử dụng ví..."
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </label>
         <div className="modal__foot">
-          <button type="button" className="btn btn--ghost" onClick={closeModal}>
-            Cancel
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Hủy
           </button>
           <button type="submit" className="btn btn--primary">
-            Plan it
+            Thêm ví
           </button>
         </div>
       </form>
-    </div>
+    </AnimatedModal>
   );
 };
 
-const NewQuoteModal: React.FC<{ defaultDealId?: string }> = ({ defaultDealId }) => {
-  const { space, closeModal, createQuote, openDrawer } = useCrm();
-  const openDeals = space.deals.filter((d) => d.stage !== 'lost');
-  const [dealId, setDealId] = useState(defaultDealId || openDeals[0]?.id || '');
-  const [lines, setLines] = useState([
-    { id: 'nql-1', item: 'Panel 430 W', qty: 24, unitPrice: 3290 },
-    { id: 'nql-2', item: 'Installation day', qty: 2, unitPrice: 11800 },
-  ]);
-
-  const companyMap = new Map(space.companies.map((c) => [c.id, c.name]));
-  const sub = quoteSubtotal(lines);
-  const vat = quoteVat(lines);
-  const total = quoteTotalWithVat(lines);
-
-  const updateLine = (idx: number, patch: Partial<{ item: string; qty: number; unitPrice: number }>) => {
-    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
-  };
-
-  const addLine = () => {
-    setLines((prev) => [
-      ...prev,
-      { id: `nql-${Date.now()}`, item: '', qty: 1, unitPrice: 10000 },
-    ]);
-  };
-
-  const removeLine = (idx: number) => {
-    setLines((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
-  };
+const NewIdeaModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { addFutureIdea } = useApp();
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState('Cá nhân');
+  const [priority, setPriority] = useState<'high' | 'medium' | 'low'>('medium');
+  const [tone, setTone] = useState<AccentTone>('lime');
+  const [description, setDescription] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleaned = lines
-      .filter((l) => l.item.trim())
-      .map((l) => ({
-        item: l.item.trim(),
-        qty: Math.max(1, Number(l.qty) || 1),
-        unitPrice: Math.max(0, Number(l.unitPrice) || 0),
-      }));
-    if (!dealId || cleaned.length === 0) return;
-    const created = createQuote(dealId, cleaned);
-    closeModal();
-    openDrawer({ kind: 'quote', id: created.id });
+    if (!name.trim()) return;
+    addFutureIdea({
+      name: name.trim(),
+      category: category.trim() || 'Cá nhân',
+      priority,
+      tone,
+      description: description.trim() || 'Tính năng dự định mở rộng trong tương lai.',
+    });
+    onClose();
   };
 
   return (
-    <div className="modal" style={{ maxWidth: 620 }}>
+    <AnimatedModal open onClose={onClose} label="Thêm ý tưởng module mới">
       <div className="modal__head">
-        <h2 className="modal__title">New quote</h2>
-        <button type="button" className="icon-circle" onClick={closeModal} aria-label="Close">
+        <h2 className="modal__title">Lưu ý tưởng module mở rộng</h2>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Đóng">
           <IconClose size={16} />
         </button>
       </div>
-
-      <form className="form-stack" onSubmit={handleSubmit}>
+      <form className="modal__body form-stack" onSubmit={handleSubmit}>
         <label className="field">
-          <span className="field__label">Deal</span>
-          <select className="select" value={dealId} onChange={(e) => setDealId(e.target.value)}>
-            {openDeals.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.title} — {companyMap.get(d.companyId)} ({formatKrCompact(d.value)})
-              </option>
-            ))}
-          </select>
+          <span className="field__label">Tên module dự định</span>
+          <input
+            className="input"
+            autoFocus
+            placeholder="VD: Theo dõi giấc ngủ, Quản lý sách, Nhật ký..."
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
         </label>
-
-        <div className="field">
-          <div className="drawer-section__head" style={{ marginBottom: 4 }}>
-            <span className="field__label">Quote lines</span>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={addLine}>
-              <IconPlus size={13} />
-              Add a line
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {lines.map((line, idx) => (
-              <div
-                key={line.id}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 74px 124px 34px',
-                  gap: 8,
-                  alignItems: 'center',
-                }}
+        <div className="form-grid">
+          <label className="field">
+            <span className="field__label">Nhóm</span>
+            <input
+              className="input"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span className="field__label">Mức ưu tiên</span>
+            <select
+              className="select"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value as 'high' | 'medium' | 'low')}
+            >
+              <option value="high">Làm sớm</option>
+              <option value="medium">Trung bình</option>
+              <option value="low">Để sau</option>
+            </select>
+          </label>
+        </div>
+        <label className="field">
+          <span className="field__label">Màu nhận diện</span>
+          <div className="seg">
+            {(['lime', 'sky', 'coral', 'sand'] as AccentTone[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`seg__btn ${tone === t ? 'is-active' : ''}`}
+                onClick={() => setTone(t)}
               >
-                <input
-                  className="input"
-                  placeholder="Item description"
-                  value={line.item}
-                  onChange={(e) => updateLine(idx, { item: e.target.value })}
-                />
-                <input
-                  className="input"
-                  type="number"
-                  min="1"
-                  aria-label="Qty"
-                  value={line.qty}
-                  onChange={(e) => updateLine(idx, { qty: Number(e.target.value) })}
-                />
-                <input
-                  className="input"
-                  type="number"
-                  min="0"
-                  step="100"
-                  aria-label="Unit price"
-                  value={line.unitPrice}
-                  onChange={(e) => updateLine(idx, { unitPrice: Number(e.target.value) })}
-                />
-                <button
-                  type="button"
-                  className="icon-circle"
-                  onClick={() => removeLine(idx)}
-                  aria-label="Remove line"
-                  disabled={lines.length <= 1}
-                  style={{ opacity: lines.length <= 1 ? 0.35 : 1 }}
-                >
-                  <IconClose size={14} />
-                </button>
-              </div>
+                {t}
+              </button>
             ))}
           </div>
-        </div>
-
-        <div
-          style={{
-            padding: '14px 16px',
-            borderRadius: 16,
-            background: 'var(--well)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--muted)' }}>
-            <span>Subtotal</span>
-            <span>{formatNumber(sub)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--muted)' }}>
-            <span>VAT 25%</span>
-            <span>{formatNumber(vat)}</span>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              fontSize: 16,
-              fontWeight: 700,
-              paddingTop: 6,
-              borderTop: '1px solid var(--line)',
-            }}
-          >
-            <span>Total</span>
-            <span>{formatKrExact(total)}</span>
-          </div>
-        </div>
-
+        </label>
+        <label className="field">
+          <span className="field__label">Mô tả ý tưởng</span>
+          <textarea
+            className="textarea"
+            rows={3}
+            placeholder="Module này sẽ giúp bạn theo dõi điều gì?"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </label>
         <div className="modal__foot">
-          <button type="button" className="btn btn--ghost" onClick={closeModal}>
-            Cancel
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Hủy
           </button>
           <button type="submit" className="btn btn--primary">
-            Save draft
+            Lưu vào lộ trình
           </button>
         </div>
       </form>
-    </div>
+    </AnimatedModal>
   );
+};
+
+const ShortcutsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
+  <AnimatedModal open onClose={onClose} label="Phím tắt">
+    <div className="modal__head">
+      <h2 className="modal__title">Phím tắt nhanh</h2>
+      <button type="button" className="icon-btn" onClick={onClose} aria-label="Đóng">
+        <IconClose size={16} />
+      </button>
+    </div>
+    <div className="modal__body stack-list">
+      {[
+        ['⌘K / Ctrl+K', 'Mở tìm kiếm toàn cục & lệnh nhanh'],
+        ['⌘\\ / Ctrl+\\', 'Đóng / mở thanh điều hướng'],
+        ['?', 'Xem danh sách phím tắt'],
+        ['Esc', 'Đóng hộp thoại hoặc ngăn kéo hiện tại'],
+      ].map(([k, desc]) => (
+        <div
+          key={k}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '10px 12px',
+            borderRadius: 12,
+            background: 'var(--well)',
+          }}
+        >
+          <span style={{ fontSize: 13.5 }}>{desc}</span>
+          <kbd className="kbd">{k}</kbd>
+        </div>
+      ))}
+    </div>
+  </AnimatedModal>
+);
+
+export const Modals: React.FC = () => {
+  const { modal, closeModal } = useApp();
+  if (!modal) return null;
+
+  if (modal.kind === 'search') return <SearchModal onClose={closeModal} />;
+  if (modal.kind === 'shortcuts') return <ShortcutsModal onClose={closeModal} />;
+  if (modal.kind === 'new-task') {
+    return (
+      <NewTaskModal
+        defaultStatus={modal.defaultStatus}
+        defaultCategory={modal.defaultCategory}
+        defaultDate={modal.defaultDate}
+        onClose={closeModal}
+      />
+    );
+  }
+  if (modal.kind === 'new-tx') {
+    return (
+      <NewTransactionModal
+        defaultType={modal.defaultType}
+        defaultWalletId={modal.defaultWalletId}
+        defaultCategoryId={modal.defaultCategoryId}
+        onClose={closeModal}
+      />
+    );
+  }
+  if (modal.kind === 'new-wallet') return <NewWalletModal onClose={closeModal} />;
+  if (modal.kind === 'new-idea') return <NewIdeaModal onClose={closeModal} />;
+  return null;
 };

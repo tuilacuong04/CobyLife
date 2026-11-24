@@ -1,33 +1,58 @@
-import { PersistedState } from '../types';
-import { createInitialState } from '../data/seedData';
+import { PersistedAppState } from '../types';
+import { createStarterState } from '../data/seedData';
 
-const STORAGE_KEY = 'sylva_crm_state_v1';
+export const APP_STORAGE_KEY = 'sylva_personal_os_v1';
 
-export function loadState(): PersistedState {
+export function loadAppState(): PersistedAppState {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return createInitialState();
-    const parsed = JSON.parse(raw) as PersistedState;
-    if (!parsed || !parsed.spaces || !parsed.activeSpaceId || !parsed.settings) {
-      return createInitialState();
-    }
-    return parsed;
+    const raw = window.localStorage.getItem(APP_STORAGE_KEY);
+    if (!raw) return createStarterState();
+    const parsed = JSON.parse(raw) as Partial<PersistedAppState>;
+    const fallback = createStarterState();
+    if (!parsed || typeof parsed !== 'object') return fallback;
+    return {
+      version: 1,
+      tasks: Array.isArray(parsed.tasks) ? parsed.tasks : fallback.tasks,
+      finance:
+        parsed.finance &&
+        Array.isArray(parsed.finance.wallets) &&
+        Array.isArray(parsed.finance.categories) &&
+        Array.isArray(parsed.finance.transactions) &&
+        Array.isArray(parsed.finance.budgets)
+          ? parsed.finance
+          : fallback.finance,
+      futureModules: Array.isArray(parsed.futureModules)
+        ? parsed.futureModules
+        : fallback.futureModules,
+      settings: {
+        ...fallback.settings,
+        ...(parsed.settings || {}),
+        profile: {
+          ...fallback.settings.profile,
+          ...(parsed.settings?.profile || {}),
+        },
+        enabledModules: {
+          ...fallback.settings.enabledModules,
+          ...(parsed.settings?.enabledModules || {}),
+        },
+      },
+    };
   } catch {
-    return createInitialState();
+    return createStarterState();
   }
 }
 
-export function saveState(state: PersistedState): void {
+export function saveAppState(state: PersistedAppState): void {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(state));
   } catch {
     // Ignore storage quota errors in restricted environments
   }
 }
 
-export function clearState(): void {
+export function clearAppState(): void {
   try {
-    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(APP_STORAGE_KEY);
   } catch {
     // Ignore
   }

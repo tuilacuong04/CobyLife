@@ -27,15 +27,18 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Install dependencies (Hub + openGym)
+        run: |
+          npm ci
+          npm --prefix opengym/frontend ci
 
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
 
-      - name: Build for GitHub Pages
+      - name: Build openGym + Personal OS for GitHub Pages
         run: |
+          VITE_DEMO=1 npm --prefix opengym/frontend run build -- --outDir ../../public/opengym --emptyOutDir
           BASE_PATH="${{ steps.pages.outputs.base_path }}"
           if [ -z "$BASE_PATH" ]; then
             BASE_PATH="/"
@@ -44,6 +47,7 @@ jobs:
           fi
           npx tsc && npx vite build --base "$BASE_PATH"
           cp dist/index.html dist/404.html
+          touch dist/.nojekyll
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

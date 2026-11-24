@@ -415,6 +415,7 @@ interface AnimatedPopoverProps {
   offset?: number;
   className?: string;
   style?: React.CSSProperties;
+  onClose?: () => void;
   children: React.ReactNode;
 }
 
@@ -425,6 +426,7 @@ export const AnimatedPopover: React.FC<AnimatedPopoverProps> = ({
   offset = 10,
   className = '',
   style,
+  onClose,
   children,
 }) => {
   const [rendered, setRendered] = useState(open);
@@ -434,6 +436,19 @@ export const AnimatedPopover: React.FC<AnimatedPopoverProps> = ({
   if (open && !rendered) {
     setRendered(true);
   }
+
+  useEffect(() => {
+    if (!open || !onClose) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (ref.current?.contains(target)) return;
+      if (anchorRef.current?.contains(target)) return;
+      onClose();
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [open, onClose, anchorRef]);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -513,6 +528,107 @@ export const AnimatedPopover: React.FC<AnimatedPopoverProps> = ({
       style={style}
     >
       {children}
+    </div>,
+    document.body
+  );
+};
+
+export function SlidingSegmented<T extends string>({
+  value,
+  items,
+  onChange,
+  ariaLabel,
+}: {
+  value: T;
+  items: SegOption<T>[];
+  onChange: (id: T) => void;
+  ariaLabel?: string;
+}) {
+  return <SlidingSeg activeId={value} items={items} onChange={onChange} ariaLabel={ariaLabel} />;
+}
+
+export const AnimatedModal: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  size?: 'md' | 'lg';
+  label?: string;
+  children: React.ReactNode;
+}> = ({ open, onClose, size = 'md', label, children }) => {
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!open || !el || isReducedMotion()) return;
+    const tween = gsap.fromTo(
+      el,
+      { opacity: 0, y: 18, scale: 0.96 },
+      { opacity: 1, y: 0, scale: 1, duration: dur(0.38), ease: 'expo.out', clearProps: 'transform' }
+    );
+    return () => {
+      tween.kill();
+    };
+  }, [open]);
+
+  if (!open || typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={label} onClick={onClose}>
+      <div
+        ref={boxRef}
+        className={`modal ${size === 'lg' ? 'modal--cmd' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+export const AnimatedDrawer: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  label?: string;
+  children: React.ReactNode;
+}> = ({ open, onClose, label, children }) => {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  useLayoutEffect(() => {
+    const el = panelRef.current;
+    if (!open || !el || isReducedMotion()) return;
+    const tween = gsap.fromTo(
+      el,
+      { x: 44, opacity: 0 },
+      { x: 0, opacity: 1, duration: dur(0.42), ease: 'expo.out', clearProps: 'transform' }
+    );
+    return () => {
+      tween.kill();
+    };
+  }, [open]);
+
+  if (!open || typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="drawer-backdrop" role="dialog" aria-modal="true" aria-label={label} onClick={onClose}>
+      <div ref={panelRef} className="drawer" onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
     </div>,
     document.body
   );
