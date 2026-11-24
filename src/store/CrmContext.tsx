@@ -56,12 +56,19 @@ const VALID_PAGES = new Set<PageId>([
   'help',
 ]);
 
+const APP_BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+
 export function parseLocation(): RouteState {
-  const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
+  let rawPath = window.location.pathname || '/';
+  if (APP_BASE && (rawPath === APP_BASE || rawPath.startsWith(`${APP_BASE}/`))) {
+    rawPath = rawPath.slice(APP_BASE.length) || '/';
+  }
+  const path = rawPath.replace(/^\/+|\/+$/g, '');
   const segments = path.split('/').filter(Boolean);
   const rawPage = (segments[0] || 'overview') as PageId;
-  const page: PageId = VALID_PAGES.has(rawPage) ? rawPage : 'overview';
-  const sub = segments[1] || DEFAULT_SUB[page];
+  const isValid = VALID_PAGES.has(rawPage);
+  const page: PageId = isValid ? rawPage : 'overview';
+  const sub = (isValid ? segments[1] : '') || DEFAULT_SUB[page];
   const params = new URLSearchParams(window.location.search);
   const query: Record<string, string> = {};
   params.forEach((v, k) => {
@@ -72,7 +79,8 @@ export function parseLocation(): RouteState {
 
 export function buildUrl(page: PageId, sub?: string, query?: Record<string, string>): string {
   const resolvedSub = sub !== undefined ? sub : DEFAULT_SUB[page];
-  const base = resolvedSub ? `/${page}/${resolvedSub}` : `/${page}`;
+  const routePath = resolvedSub ? `/${page}/${resolvedSub}` : `/${page}`;
+  const base = `${APP_BASE}${routePath}`;
   if (!query) return base;
   const sp = new URLSearchParams();
   Object.entries(query).forEach(([k, v]) => {

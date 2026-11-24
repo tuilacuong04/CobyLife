@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useCrm } from '../store/CrmContext';
+import { assetUrl } from '../utils/assets';
 import { animateErrorShake } from '../utils/motion';
 import { MagneticButton } from './Motion';
 import { IconCheck, IconEye, IconEyeOff, IconSylvaMark } from './Icons';
@@ -46,7 +47,7 @@ export const AuthViews: React.FC = () => {
   return (
     <>
       <div className="backdrop" aria-hidden="true">
-        <img src="/images/backdrop.jpg" alt="" className="backdrop__img" />
+        <img src={assetUrl('/images/backdrop.jpg')} alt="" className="backdrop__img" />
         <div className="backdrop__wash" />
       </div>
 
