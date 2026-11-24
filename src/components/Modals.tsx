@@ -11,7 +11,7 @@ import {
 } from '../types';
 import {
   formatMoney,
-  formatShortDateVi,
+  formatShortDate,
   localIsoDate,
   parseSmartAmount,
   TASK_CATEGORY_META,
@@ -67,17 +67,17 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   }, [gym.routines, term]);
 
   return (
-    <AnimatedModal open onClose={onClose} size="lg" label="Tìm kiếm nhanh">
+    <AnimatedModal open onClose={onClose} size="lg" label="Quick search">
       <div className="cmd-head">
         <IconSearch size={17} />
         <input
           ref={inputRef}
           className="cmd-input"
-          placeholder="Tìm task, chi tiêu, lịch tập openGym hoặc lệnh nhanh..."
+          placeholder="Search tasks, expenses, openGym routines, or actions..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Đóng">
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
           <IconClose size={16} />
         </button>
       </div>
@@ -85,7 +85,7 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       <div className="cmd-body">
         {!term && (
           <div className="cmd-group">
-            <div className="cmd-group__label">Thao tác nhanh</div>
+            <div className="cmd-group__label">Quick actions</div>
             <button
               type="button"
               className="cmd-row"
@@ -93,7 +93,7 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             >
               <span className="cmd-row__title">
                 <IconPlus size={14} style={{ marginRight: 6 }} />
-                Tạo task cá nhân mới
+                New personal task
               </span>
               <span className="cmd-row__meta">Tasks</span>
             </button>
@@ -104,9 +104,9 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             >
               <span className="cmd-row__title">
                 <IconWallet size={14} style={{ marginRight: 6 }} />
-                Ghi chi tiêu nhanh
+                Log an expense
               </span>
-              <span className="cmd-row__meta">Chi tiêu</span>
+              <span className="cmd-row__meta">Finance</span>
             </button>
             <button
               type="button"
@@ -118,7 +118,7 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             >
               <span className="cmd-row__title">
                 <IconDumbbell size={14} style={{ marginRight: 6 }} />
-                Vào openGym — Bắt đầu buổi tập
+                Open openGym — Start workout
               </span>
               <span className="cmd-row__meta">Gym</span>
             </button>
@@ -127,7 +127,7 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
         {matchingRoutines.length > 0 && (
           <div className="cmd-group">
-            <div className="cmd-group__label">Gym · Lịch tập openGym</div>
+            <div className="cmd-group__label">Gym · openGym Routines</div>
             {matchingRoutines.map((r) => (
               <button
                 key={r.id}
@@ -139,7 +139,7 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 }}
               >
                 <span className="cmd-row__title">{r.name}</span>
-                <span className="cmd-row__meta">{r.exerciseCount} bài tập</span>
+                <span className="cmd-row__meta">{r.exerciseCount} exercises</span>
               </button>
             ))}
           </div>
@@ -147,7 +147,7 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
         {matchingTasks.length > 0 && (
           <div className="cmd-group">
-            <div className="cmd-group__label">Task cá nhân</div>
+            <div className="cmd-group__label">Tasks</div>
             {matchingTasks.map((t) => (
               <button
                 key={t.id}
@@ -163,7 +163,7 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                   <IconTasks size={14} style={{ marginRight: 6 }} />
                   {t.title}
                 </span>
-                <span className="cmd-row__meta">{formatShortDateVi(t.dueDate)}</span>
+                <span className="cmd-row__meta">{formatShortDate(t.dueDate)}</span>
               </button>
             ))}
           </div>
@@ -171,7 +171,7 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
         {matchingTx.length > 0 && (
           <div className="cmd-group">
-            <div className="cmd-group__label">Giao dịch chi tiêu</div>
+            <div className="cmd-group__label">Transactions</div>
             {matchingTx.map((tx) => (
               <button
                 key={tx.id}
@@ -183,7 +183,7 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                   openDrawer({ kind: 'transaction', id: tx.id });
                 }}
               >
-                <span className="cmd-row__title">{tx.note || 'Giao dịch'}</span>
+                <span className="cmd-row__title">{tx.note || 'Transaction'}</span>
                 <span className="cmd-row__meta">
                   {tx.type === 'expense' ? '-' : tx.type === 'income' ? '+' : ''}
                   {formatMoney(tx.amount, state.settings.currency)}
@@ -195,7 +195,7 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
         {term && matchingTasks.length === 0 && matchingTx.length === 0 && matchingRoutines.length === 0 && (
           <div className="empty-state" style={{ padding: '28px 12px' }}>
-            Không tìm thấy kết quả nào cho &ldquo;{q}&rdquo;.
+            No matches for &ldquo;{q}&rdquo;.
           </div>
         )}
       </div>
@@ -224,7 +224,7 @@ const NewTaskModal: React.FC<{
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      setError('Vui lòng nhập tiêu đề công việc.');
+      setError('Enter a task title.');
       animateErrorShake(boxRef.current);
       return;
     }
@@ -243,20 +243,20 @@ const NewTaskModal: React.FC<{
   };
 
   return (
-    <AnimatedModal open onClose={onClose} label="Thêm task mới">
+    <AnimatedModal open onClose={onClose} label="New task">
       <div className="modal__head">
-        <h2 className="modal__title">Thêm task cá nhân mới</h2>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Đóng">
+        <h2 className="modal__title">New task</h2>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
           <IconClose size={16} />
         </button>
       </div>
       <form ref={boxRef} className="modal__body form-stack" onSubmit={handleSubmit}>
         <label className="field">
-          <span className="field__label">Tên công việc</span>
+          <span className="field__label">Title</span>
           <input
             className="input"
             autoFocus
-            placeholder="VD: Tập chân 60 phút, Thanh toán tiền mạng..."
+            placeholder="e.g., Leg Day 60m, Pay internet bill..."
             value={title}
             onChange={(e) => {
               setTitle(e.target.value);
@@ -268,7 +268,7 @@ const NewTaskModal: React.FC<{
 
         <div className="form-grid">
           <label className="field">
-            <span className="field__label">Danh mục</span>
+            <span className="field__label">Category</span>
             <select
               className="select"
               value={category}
@@ -282,19 +282,19 @@ const NewTaskModal: React.FC<{
             </select>
           </label>
           <label className="field">
-            <span className="field__label">Độ ưu tiên</span>
+            <span className="field__label">Priority</span>
             <select
               className="select"
               value={priority}
               onChange={(e) => setPriority(e.target.value as TaskPriority)}
             >
-              <option value="high">Ưu tiên cao</option>
-              <option value="medium">Trung bình</option>
-              <option value="low">Thấp</option>
+              <option value="high">High priority</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
             </select>
           </label>
           <label className="field">
-            <span className="field__label">Ngày hạn</span>
+            <span className="field__label">Due date</span>
             <input
               type="date"
               className="input"
@@ -303,7 +303,7 @@ const NewTaskModal: React.FC<{
             />
           </label>
           <label className="field">
-            <span className="field__label">Giờ (tùy chọn)</span>
+            <span className="field__label">Time (optional)</span>
             <input
               type="time"
               className="input"
@@ -312,38 +312,38 @@ const NewTaskModal: React.FC<{
             />
           </label>
           <label className="field">
-            <span className="field__label">Trạng thái</span>
+            <span className="field__label">Status</span>
             <select
               className="select"
               value={status}
               onChange={(e) => setStatus(e.target.value as TaskStatus)}
             >
-              <option value="todo">Cần làm</option>
-              <option value="doing">Đang làm</option>
-              <option value="done">Hoàn thành</option>
+              <option value="todo">To Do</option>
+              <option value="doing">In Progress</option>
+              <option value="done">Done</option>
             </select>
           </label>
           <label className="field">
-            <span className="field__label">Lặp lại</span>
+            <span className="field__label">Repeat</span>
             <select
               className="select"
               value={recurrence}
               onChange={(e) => setRecurrence(e.target.value as TaskRecurrence)}
             >
-              <option value="none">Không lặp</option>
-              <option value="daily">Hàng ngày</option>
-              <option value="weekly">Hàng tuần</option>
-              <option value="monthly">Hàng tháng</option>
+              <option value="none">No repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
             </select>
           </label>
         </div>
 
         <label className="field">
-          <span className="field__label">Ghi chú</span>
+          <span className="field__label">Notes</span>
           <textarea
             className="textarea"
             rows={3}
-            placeholder="Chi tiết cần nhớ..."
+            placeholder="Extra context or links..."
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
@@ -351,10 +351,10 @@ const NewTaskModal: React.FC<{
 
         <div className="modal__foot">
           <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Hủy
+            Cancel
           </button>
           <button type="submit" className="btn btn--primary">
-            Tạo task
+            Create task
           </button>
         </div>
       </form>
@@ -410,16 +410,16 @@ const NewTransactionModal: React.FC<{
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (parsedAmount <= 0) {
-      setError('Vui lòng nhập số tiền hợp lệ (VD: 50k, 1.5tr, 250000).');
+      setError('Enter a valid amount (e.g., 50k, 1.5m, 250000).');
       animateErrorShake(boxRef.current);
       return;
     }
     if (!walletId) {
-      setError('Vui lòng chọn ví.');
+      setError('Select a wallet.');
       return;
     }
     if (type === 'transfer' && (!toWalletId || toWalletId === walletId)) {
-      setError('Ví đích phải khác ví nguồn.');
+      setError('Destination wallet must be different.');
       animateErrorShake(boxRef.current);
       return;
     }
@@ -430,16 +430,16 @@ const NewTransactionModal: React.FC<{
       walletId,
       toWalletId: type === 'transfer' ? toWalletId : undefined,
       date,
-      note: note.trim() || (type === 'transfer' ? 'Chuyển tiền giữa ví' : ''),
+      note: note.trim() || (type === 'transfer' ? 'Wallet transfer' : ''),
     });
     onClose();
   };
 
   return (
-    <AnimatedModal open onClose={onClose} label="Ghi giao dịch mới">
+    <AnimatedModal open onClose={onClose} label="New transaction">
       <div className="modal__head">
-        <h2 className="modal__title">Ghi giao dịch tài chính</h2>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Đóng">
+        <h2 className="modal__title">Log transaction</h2>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
           <IconClose size={16} />
         </button>
       </div>
@@ -447,9 +447,9 @@ const NewTransactionModal: React.FC<{
         <div className="seg" style={{ width: '100%' }}>
           {(
             [
-              { id: 'expense', label: 'Chi tiêu' },
-              { id: 'income', label: 'Thu nhập' },
-              { id: 'transfer', label: 'Chuyển ví' },
+              { id: 'expense', label: 'Expense' },
+              { id: 'income', label: 'Income' },
+              { id: 'transfer', label: 'Transfer' },
             ] as { id: TxType; label: string }[]
           ).map((item) => (
             <button
@@ -466,7 +466,7 @@ const NewTransactionModal: React.FC<{
 
         <label className="field">
           <span className="field__label">
-            Số tiền{' '}
+            Amount{' '}
             {parsedAmount > 0 && (
               <strong style={{ color: 'var(--accent-ink)', marginLeft: 6 }}>
                 = {formatMoney(parsedAmount, state.settings.currency)}
@@ -476,7 +476,7 @@ const NewTransactionModal: React.FC<{
           <input
             className="input"
             autoFocus
-            placeholder="Nhập nhanh: 50k, 1.5tr, 250000..."
+            placeholder="Quick format: 50k, 1.5m, 250000..."
             value={amountRaw}
             onChange={(e) => {
               setAmountRaw(e.target.value);
@@ -484,7 +484,7 @@ const NewTransactionModal: React.FC<{
             }}
           />
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-            {['35k', '50k', '100k', '250k', '500k', '1tr'].map((preset) => (
+            {['35k', '50k', '100k', '250k', '500k', '1m'].map((preset) => (
               <button
                 key={preset}
                 type="button"
@@ -504,7 +504,7 @@ const NewTransactionModal: React.FC<{
 
         <div className="form-grid">
           <label className="field">
-            <span className="field__label">{type === 'transfer' ? 'Từ ví' : 'Ví / Tài khoản'}</span>
+            <span className="field__label">{type === 'transfer' ? 'From wallet' : 'Wallet'}</span>
             <select
               className="select"
               value={walletId}
@@ -520,7 +520,7 @@ const NewTransactionModal: React.FC<{
 
           {type === 'transfer' ? (
             <label className="field">
-              <span className="field__label">Đến ví</span>
+              <span className="field__label">To wallet</span>
               <select
                 className="select"
                 value={toWalletId}
@@ -537,7 +537,7 @@ const NewTransactionModal: React.FC<{
             </label>
           ) : (
             <label className="field">
-              <span className="field__label">Danh mục</span>
+              <span className="field__label">Category</span>
               <select
                 className="select"
                 value={categoryId}
@@ -553,7 +553,7 @@ const NewTransactionModal: React.FC<{
           )}
 
           <label className="field">
-            <span className="field__label">Ngày</span>
+            <span className="field__label">Date</span>
             <input
               type="date"
               className="input"
@@ -563,10 +563,10 @@ const NewTransactionModal: React.FC<{
           </label>
 
           <label className="field">
-            <span className="field__label">Ghi chú</span>
+            <span className="field__label">Note</span>
             <input
               className="input"
-              placeholder="VD: Cơm trưa, Whey, Tiền xăng..."
+              placeholder="e.g., Lunch, Whey, Fuel..."
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
@@ -575,10 +575,10 @@ const NewTransactionModal: React.FC<{
 
         <div className="modal__foot">
           <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Hủy
+            Cancel
           </button>
           <button type="submit" className="btn btn--primary">
-            Lưu giao dịch
+            Save
           </button>
         </div>
       </form>
@@ -608,27 +608,27 @@ const NewWalletModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   };
 
   return (
-    <AnimatedModal open onClose={onClose} label="Thêm ví mới">
+    <AnimatedModal open onClose={onClose} label="Add wallet">
       <div className="modal__head">
-        <h2 className="modal__title">Thêm ví / tài khoản mới</h2>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Đóng">
+        <h2 className="modal__title">New wallet</h2>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
           <IconClose size={16} />
         </button>
       </div>
       <form className="modal__body form-stack" onSubmit={handleSubmit}>
         <label className="field">
-          <span className="field__label">Tên ví / ngân hàng</span>
+          <span className="field__label">Wallet name</span>
           <input
             className="input"
             autoFocus
-            placeholder="VD: Techcombank, ZaloPay, Quỹ du lịch..."
+            placeholder="e.g., Checking, MoMo, Travel Fund..."
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
         <div className="form-grid">
           <label className="field">
-            <span className="field__label">Loại ví</span>
+            <span className="field__label">Type</span>
             <select
               className="select"
               value={kind}
@@ -642,7 +642,7 @@ const NewWalletModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             </select>
           </label>
           <label className="field">
-            <span className="field__label">Số dư ban đầu (VD: 5tr)</span>
+            <span className="field__label">Starting balance (e.g. 5m)</span>
             <input
               className="input"
               placeholder="0"
@@ -652,7 +652,7 @@ const NewWalletModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           </label>
         </div>
         <label className="field">
-          <span className="field__label">Màu thẻ</span>
+          <span className="field__label">Card accent</span>
           <div className="seg">
             {(['sky', 'lime', 'coral', 'sand'] as AccentTone[]).map((t) => (
               <button
@@ -667,20 +667,20 @@ const NewWalletModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           </div>
         </label>
         <label className="field">
-          <span className="field__label">Ghi chú</span>
+          <span className="field__label">Note</span>
           <input
             className="input"
-            placeholder="Mục đích sử dụng ví..."
+            placeholder="Optional description..."
             value={note}
             onChange={(e) => setNote(e.target.value)}
           />
         </label>
         <div className="modal__foot">
           <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Hủy
+            Cancel
           </button>
           <button type="submit" className="btn btn--primary">
-            Thêm ví
+            Add wallet
           </button>
         </div>
       </form>
@@ -691,7 +691,7 @@ const NewWalletModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 const NewIdeaModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const { addFutureIdea } = useApp();
   const [name, setName] = useState('');
-  const [category, setCategory] = useState('Cá nhân');
+  const [category, setCategory] = useState('Personal');
   const [priority, setPriority] = useState<'high' | 'medium' | 'low'>('medium');
   const [tone, setTone] = useState<AccentTone>('lime');
   const [description, setDescription] = useState('');
@@ -701,36 +701,36 @@ const NewIdeaModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     if (!name.trim()) return;
     addFutureIdea({
       name: name.trim(),
-      category: category.trim() || 'Cá nhân',
+      category: category.trim() || 'Personal',
       priority,
       tone,
-      description: description.trim() || 'Tính năng dự định mở rộng trong tương lai.',
+      description: description.trim() || 'Planned personal extension module.',
     });
     onClose();
   };
 
   return (
-    <AnimatedModal open onClose={onClose} label="Thêm ý tưởng module mới">
+    <AnimatedModal open onClose={onClose} label="Add module idea">
       <div className="modal__head">
-        <h2 className="modal__title">Lưu ý tưởng module mở rộng</h2>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Đóng">
+        <h2 className="modal__title">Save future module idea</h2>
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
           <IconClose size={16} />
         </button>
       </div>
       <form className="modal__body form-stack" onSubmit={handleSubmit}>
         <label className="field">
-          <span className="field__label">Tên module dự định</span>
+          <span className="field__label">Module name</span>
           <input
             className="input"
             autoFocus
-            placeholder="VD: Theo dõi giấc ngủ, Quản lý sách, Nhật ký..."
+            placeholder="e.g., Sleep Tracker, Journal, Reading List..."
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
         <div className="form-grid">
           <label className="field">
-            <span className="field__label">Nhóm</span>
+            <span className="field__label">Category</span>
             <input
               className="input"
               value={category}
@@ -738,20 +738,20 @@ const NewIdeaModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             />
           </label>
           <label className="field">
-            <span className="field__label">Mức ưu tiên</span>
+            <span className="field__label">Priority</span>
             <select
               className="select"
               value={priority}
               onChange={(e) => setPriority(e.target.value as 'high' | 'medium' | 'low')}
             >
-              <option value="high">Làm sớm</option>
-              <option value="medium">Trung bình</option>
-              <option value="low">Để sau</option>
+              <option value="high">Next up</option>
+              <option value="medium">Medium</option>
+              <option value="low">Later</option>
             </select>
           </label>
         </div>
         <label className="field">
-          <span className="field__label">Màu nhận diện</span>
+          <span className="field__label">Accent</span>
           <div className="seg">
             {(['lime', 'sky', 'coral', 'sand'] as AccentTone[]).map((t) => (
               <button
@@ -766,21 +766,21 @@ const NewIdeaModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           </div>
         </label>
         <label className="field">
-          <span className="field__label">Mô tả ý tưởng</span>
+          <span className="field__label">Description</span>
           <textarea
             className="textarea"
             rows={3}
-            placeholder="Module này sẽ giúp bạn theo dõi điều gì?"
+            placeholder="What should this module help you track?"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
         </label>
         <div className="modal__foot">
           <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Hủy
+            Cancel
           </button>
           <button type="submit" className="btn btn--primary">
-            Lưu vào lộ trình
+            Save to roadmap
           </button>
         </div>
       </form>
@@ -789,19 +789,19 @@ const NewIdeaModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 };
 
 const ShortcutsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => (
-  <AnimatedModal open onClose={onClose} label="Phím tắt">
+  <AnimatedModal open onClose={onClose} label="Keyboard shortcuts">
     <div className="modal__head">
-      <h2 className="modal__title">Phím tắt nhanh</h2>
-      <button type="button" className="icon-btn" onClick={onClose} aria-label="Đóng">
+      <h2 className="modal__title">Keyboard shortcuts</h2>
+      <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
         <IconClose size={16} />
       </button>
     </div>
     <div className="modal__body stack-list">
       {[
-        ['⌘K / Ctrl+K', 'Mở tìm kiếm toàn cục & lệnh nhanh'],
-        ['⌘\\ / Ctrl+\\', 'Đóng / mở thanh điều hướng'],
-        ['?', 'Xem danh sách phím tắt'],
-        ['Esc', 'Đóng hộp thoại hoặc ngăn kéo hiện tại'],
+        ['⌘K / Ctrl+K', 'Open global search & quick actions'],
+        ['⌘\\ / Ctrl+\\', 'Toggle sidebar'],
+        ['?', 'Show keyboard shortcuts'],
+        ['Esc', 'Close active modal or drawer'],
       ].map(([k, desc]) => (
         <div
           key={k}

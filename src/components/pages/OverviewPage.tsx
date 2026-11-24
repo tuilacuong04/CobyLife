@@ -3,12 +3,12 @@ import { APP_MODULES } from '../../modules/registry';
 import { useApp } from '../../store/AppContext';
 import {
   currentMonthKey,
-  formatFullDateVi,
+  formatFullDate,
   formatMoney,
   formatMoneyCompact,
-  formatShortDateVi,
+  formatShortDate,
   formatVolume,
-  greetingVi,
+  greetingEn,
   localIsoDate,
   relativeDueLabel,
   TASK_CATEGORY_META,
@@ -25,7 +25,6 @@ import {
   IconFlame,
   IconModuleGlyph,
   IconPlus,
-  IconTasks,
   IconWallet,
 } from '../Icons';
 
@@ -51,7 +50,6 @@ export const OverviewPage: React.FC = () => {
   const thisMonth = currentMonthKey();
   const { currency, profile } = state.settings;
 
-  // Tasks KPIs
   const tasksToday = useMemo(
     () =>
       state.tasks
@@ -69,7 +67,6 @@ export const OverviewPage: React.FC = () => {
   const overdueCount = openTasksToday.filter((t) => t.dueDate && t.dueDate < today).length;
   const doneTasksToday = tasksToday.filter((t) => t.status === 'done').length;
 
-  // Finance KPIs
   const financeMetrics = useMemo(() => {
     let monthExpense = 0;
     let monthIncome = 0;
@@ -127,15 +124,15 @@ export const OverviewPage: React.FC = () => {
       <div className="phead">
         <div>
           <h1 className="phead__title">
-            {greetingVi()}, {profile.name}
+            {greetingEn()}, {profile.name}
           </h1>
           <p className="phead__sub">
-            {formatFullDateVi()} · {openTasksToday.length} task cần xử lý ·{' '}
+            {formatFullDate()} · {openTasksToday.length} tasks left today ·{' '}
             {gym.activeWorkout
-              ? `Đang tập: ${gym.activeWorkout.name}`
+              ? `Active: ${gym.activeWorkout.name}`
               : gym.todayRoutine
-                ? `Lịch Gym: ${gym.todayRoutine.name}`
-                : 'Sẵn sàng cho ngày mới'}
+                ? `Gym: ${gym.todayRoutine.name}`
+                : 'Ready to train'}
           </p>
         </div>
         <div className="phead__actions">
@@ -145,7 +142,7 @@ export const OverviewPage: React.FC = () => {
             onClick={() => openModal({ kind: 'new-tx', defaultType: 'expense' })}
           >
             <IconWallet size={15} />
-            Ghi chi tiêu
+            Log expense
           </button>
           <MagneticButton
             type="button"
@@ -153,7 +150,7 @@ export const OverviewPage: React.FC = () => {
             onClick={() => openGymView('#/home')}
           >
             <IconDumbbell size={15} />
-            {gym.activeWorkout ? 'Tiếp tục buổi tập' : 'Vào tập Gym'}
+            {gym.activeWorkout ? 'Resume workout' : 'Open Gym'}
           </MagneticButton>
         </div>
       </div>
@@ -167,9 +164,9 @@ export const OverviewPage: React.FC = () => {
           style={{ cursor: 'pointer' }}
           onClick={() => openGymView('#/home')}
         >
-          <div className="kpi-card__label">Gym tuần này (openGym)</div>
+          <div className="kpi-card__label">Gym this week</div>
           <div className="kpi-card__value">
-            {gym.available ? `${gym.workoutsThisWeek}/${gym.weekTarget} buổi` : 'Sẵn sàng'}
+            {gym.available ? `${gym.workoutsThisWeek}/${gym.weekTarget} sessions` : 'Ready'}
           </div>
           <div className="meter">
             <div
@@ -182,12 +179,12 @@ export const OverviewPage: React.FC = () => {
               <>
                 <span className="kpi-card__delta">
                   <IconFlame size={13} style={{ verticalAlign: '-2px', marginRight: 3 }} />
-                  {gym.streakWeeks} tuần liên tiếp
+                  {gym.streakWeeks}w streak
                 </span>
                 <span>· {formatVolume(gym.totalVolumeThisWeek, gym.unit)}</span>
               </>
             ) : (
-              <span>Nhấn để khởi chạy openGym lần đầu</span>
+              <span>Tap to launch openGym</span>
             )}
           </div>
         </div>
@@ -199,17 +196,17 @@ export const OverviewPage: React.FC = () => {
           style={{ cursor: 'pointer' }}
           onClick={() => navigate('tasks', 'agenda')}
         >
-          <div className="kpi-card__label">Task hôm nay</div>
+          <div className="kpi-card__label">Tasks today</div>
           <div className="kpi-card__value">
             {doneTasksToday}/{tasksToday.length}
           </div>
           <div className="kpi-card__meta">
             {overdueCount > 0 ? (
-              <span className="kpi-card__delta is-neg">{overdueCount} quá hạn</span>
+              <span className="kpi-card__delta is-neg">{overdueCount} overdue</span>
             ) : (
-              <span className="kpi-card__delta">Đúng tiến độ</span>
+              <span className="kpi-card__delta">On track</span>
             )}
-            <span>· {state.tasks.filter((t) => t.status !== 'done').length} đang mở</span>
+            <span>· {state.tasks.filter((t) => t.status !== 'done').length} open</span>
           </div>
         </div>
 
@@ -220,7 +217,7 @@ export const OverviewPage: React.FC = () => {
           style={{ cursor: 'pointer' }}
           onClick={() => navigate('finance', 'overview')}
         >
-          <div className="kpi-card__label">Chi tiêu tháng này</div>
+          <div className="kpi-card__label">Spent this month</div>
           <div className="kpi-card__value">
             {formatMoneyCompact(financeMetrics.monthExpense, currency)}
           </div>
@@ -236,8 +233,8 @@ export const OverviewPage: React.FC = () => {
           <div className="kpi-card__meta">
             <span>
               {financeMetrics.totalBudget > 0
-                ? `${financeMetrics.budgetPct}% ngân sách tháng`
-                : 'Chưa đặt hạn mức'}
+                ? `${financeMetrics.budgetPct}% of monthly budget`
+                : 'No budget set'}
             </span>
           </div>
         </div>
@@ -249,15 +246,15 @@ export const OverviewPage: React.FC = () => {
           style={{ cursor: 'pointer' }}
           onClick={() => navigate('finance', 'wallets')}
         >
-          <div className="kpi-card__label">Tổng số dư các ví</div>
+          <div className="kpi-card__label">Total balance</div>
           <div className="kpi-card__value">
             {formatMoneyCompact(financeMetrics.totalBalance, currency)}
           </div>
           <div className="kpi-card__meta">
             <span className="kpi-card__delta">
-              +{formatMoneyCompact(financeMetrics.monthIncome, currency)} thu tháng này
+              +{formatMoneyCompact(financeMetrics.monthIncome, currency)} income
             </span>
-            <span>· {state.finance.wallets.length} ví</span>
+            <span>· {state.finance.wallets.length} wallets</span>
           </div>
         </div>
       </div>
@@ -270,7 +267,7 @@ export const OverviewPage: React.FC = () => {
             <div>
               <h2 className="card__title">Gym · openGym Tracker</h2>
               <p className="card__sub">
-                Tích hợp đầy đủ 5.600+ bài tập, lịch tập, bản đồ cơ & tiến trình tăng tạ
+                Full 5,600+ exercise library, workout logger, muscle recovery & 1RM stats
               </p>
             </div>
             <button
@@ -278,48 +275,48 @@ export const OverviewPage: React.FC = () => {
               className="card__link"
               onClick={() => openGymView('#/home')}
             >
-              Mở openGym <IconChevronRight size={14} />
+              Open <IconChevronRight size={14} />
             </button>
           </div>
 
           <div className="gym-summary-grid">
             <div className="gym-stat-box">
-              <div className="gym-stat-box__label">Lịch tập tiếp theo</div>
+              <div className="gym-stat-box__label">Next routine</div>
               <div className="gym-stat-box__val">
                 {gym.todayRoutine ? gym.todayRoutine.name : 'Push / Pull / Legs'}
               </div>
               <div className="gym-stat-box__sub">
                 {gym.todayRoutine
-                  ? `${gym.todayRoutine.exerciseCount} bài tập đã lên lịch`
-                  : 'Mở openGym để tạo hoặc chọn lịch'}
+                  ? `${gym.todayRoutine.exerciseCount} exercises scheduled`
+                  : 'Open openGym to configure your split'}
               </div>
             </div>
 
             <div className="gym-stat-box">
-              <div className="gym-stat-box__label">Cân nặng gần nhất</div>
+              <div className="gym-stat-box__label">Latest bodyweight</div>
               <div className="gym-stat-box__val">
                 {gym.latestBodyweight
                   ? `${gym.latestBodyweight.weight} ${gym.unit}`
-                  : 'Chưa ghi nhận'}
+                  : 'Not logged'}
               </div>
               <div className="gym-stat-box__sub">
                 {gym.latestBodyweight?.target
-                  ? `Mục tiêu: ${gym.latestBodyweight.target} ${gym.unit}`
+                  ? `Goal: ${gym.latestBodyweight.target} ${gym.unit}`
                   : gym.lastWorkout
-                    ? `Buổi gần nhất: ${gym.lastWorkout.name} (${formatShortDateVi(gym.lastWorkout.date)})`
-                    : 'Đồng bộ trực tiếp với openGym'}
+                    ? `Last: ${gym.lastWorkout.name} (${formatShortDate(gym.lastWorkout.date)})`
+                    : 'Synced live with openGym'}
               </div>
             </div>
           </div>
 
           <div className="gym-shortcuts">
             {[
-              { label: 'Bắt đầu tập', path: '#/home' },
-              { label: 'Lịch tập (Plan)', path: '#/plan' },
-              { label: 'Bản đồ cơ bắp', path: '#/muscles' },
-              { label: 'Thống kê & 1RM', path: '#/stats' },
-              { label: 'Thư viện 5.6K bài', path: '#/library' },
-              { label: 'Số đo cơ thể', path: '#/measurements' },
+              { label: 'Start Workout', path: '#/home' },
+              { label: 'Plan', path: '#/plan' },
+              { label: 'Muscle Map', path: '#/muscles' },
+              { label: 'Stats & 1RM', path: '#/stats' },
+              { label: '5.6K Exercises', path: '#/library' },
+              { label: 'Body Metrics', path: '#/measurements' },
             ].map((item) => (
               <button
                 key={item.path}
@@ -337,11 +334,11 @@ export const OverviewPage: React.FC = () => {
         <div className="card bento-card col-6">
           <div className="card__head">
             <div>
-              <h2 className="card__title">Task hôm nay & quá hạn</h2>
+              <h2 className="card__title">Today&apos;s tasks</h2>
               <p className="card__sub">
                 {openTasksToday.length > 0
-                  ? `Còn ${openTasksToday.length} việc cần hoàn thành`
-                  : 'Bạn đã hoàn thành hết việc hôm nay'}
+                  ? `${openTasksToday.length} remaining for today`
+                  : 'All caught up for today'}
               </p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -351,21 +348,21 @@ export const OverviewPage: React.FC = () => {
                 style={{ height: 28 }}
                 onClick={() => openModal({ kind: 'new-task' })}
               >
-                <IconPlus size={13} /> Thêm
+                <IconPlus size={13} /> Add
               </button>
               <button
                 type="button"
                 className="card__link"
                 onClick={() => navigate('tasks', 'agenda')}
               >
-                Tất cả <IconChevronRight size={14} />
+                All <IconChevronRight size={14} />
               </button>
             </div>
           </div>
 
           {tasksToday.length === 0 ? (
             <div className="empty-state" style={{ padding: '24px 12px' }}>
-              Không có task nào đến hạn hôm nay.
+              No tasks due today.
             </div>
           ) : (
             <div className="stack-list">
@@ -378,7 +375,7 @@ export const OverviewPage: React.FC = () => {
                       type="button"
                       className={`check-btn ${done ? 'is-done' : ''}`}
                       onClick={(e) => toggleTaskDone(task.id, e.currentTarget)}
-                      aria-label={`Hoàn thành ${task.title}`}
+                      aria-label={`Complete ${task.title}`}
                     >
                       <IconCheck size={12} />
                     </button>
@@ -401,7 +398,7 @@ export const OverviewPage: React.FC = () => {
                       </div>
                     </div>
                     <span className={`pill ${TASK_PRIORITY_META[task.priority].pill}`}>
-                      {task.priority === 'high' ? 'Cao' : task.priority === 'medium' ? 'TB' : 'Thấp'}
+                      {TASK_PRIORITY_META[task.priority].short}
                     </span>
                   </div>
                 );
@@ -414,9 +411,9 @@ export const OverviewPage: React.FC = () => {
         <div className="card bento-card col-7">
           <div className="card__head">
             <div>
-              <h2 className="card__title">Giao dịch & Ngân sách tháng</h2>
+              <h2 className="card__title">Cashflow & Budgets</h2>
               <p className="card__sub">
-                Thu {formatMoney(financeMetrics.monthIncome, currency)} · Chi{' '}
+                In {formatMoney(financeMetrics.monthIncome, currency)} · Out{' '}
                 {formatMoney(financeMetrics.monthExpense, currency)}
               </p>
             </div>
@@ -427,14 +424,14 @@ export const OverviewPage: React.FC = () => {
                 style={{ height: 28 }}
                 onClick={() => openModal({ kind: 'new-tx', defaultType: 'expense' })}
               >
-                <IconPlus size={13} /> Ghi chi
+                <IconPlus size={13} /> Log
               </button>
               <button
                 type="button"
                 className="card__link"
                 onClick={() => navigate('finance', 'overview')}
               >
-                Chi tiết <IconChevronRight size={14} />
+                Details <IconChevronRight size={14} />
               </button>
             </div>
           </div>
@@ -443,7 +440,7 @@ export const OverviewPage: React.FC = () => {
             <div className="stack-list">
               {financeMetrics.recent.length === 0 ? (
                 <div className="empty-state" style={{ padding: '20px 10px' }}>
-                  Chưa có giao dịch nào.
+                  No transactions yet.
                 </div>
               ) : (
                 financeMetrics.recent.map((tx) => {
@@ -471,11 +468,11 @@ export const OverviewPage: React.FC = () => {
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div className="tx-mini-row__title">
-                          {tx.note || cat?.name || 'Giao dịch'}
+                          {tx.note || cat?.name || 'Transaction'}
                         </div>
                         <div className="tx-mini-row__sub">
-                          {tx.type === 'transfer' ? 'Chuyển ví' : cat?.name} ·{' '}
-                          {formatShortDateVi(tx.date)}
+                          {tx.type === 'transfer' ? 'Transfer' : cat?.name} ·{' '}
+                          {formatShortDate(tx.date)}
                         </div>
                       </div>
                       <div
@@ -497,8 +494,16 @@ export const OverviewPage: React.FC = () => {
             </div>
 
             <div className="stack-list">
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Hạn mức nổi bật
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: 'var(--faint)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                Top budgets
               </div>
               {financeMetrics.topBudgets.map((b) => (
                 <div key={b.categoryId} className="budget-mini">
@@ -533,7 +538,8 @@ export const OverviewPage: React.FC = () => {
                     />
                   </div>
                   <div className="budget-mini__sub">
-                    {formatMoneyCompact(b.spent, currency)} / {formatMoneyCompact(b.monthlyLimit, currency)}
+                    {formatMoneyCompact(b.spent, currency)} /{' '}
+                    {formatMoneyCompact(b.monthlyLimit, currency)}
                   </div>
                 </div>
               ))}
@@ -545,15 +551,15 @@ export const OverviewPage: React.FC = () => {
         <div className="card bento-card col-5">
           <div className="card__head">
             <div>
-              <h2 className="card__title">Hệ sinh thái cá nhân</h2>
-              <p className="card__sub">Kiến trúc module dễ mở rộng thêm tính năng #4, #5...</p>
+              <h2 className="card__title">Personal Modules</h2>
+              <p className="card__sub">Pluggable architecture ready for module #4, #5...</p>
             </div>
             <button
               type="button"
               className="card__link"
               onClick={() => navigate('modules')}
             >
-              Quản lý <IconChevronRight size={14} />
+              Manage <IconChevronRight size={14} />
             </button>
           </div>
 
@@ -574,7 +580,7 @@ export const OverviewPage: React.FC = () => {
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--muted)' }}>{mod.tagline}</div>
                 </div>
-                <span className="pill pill--lime">Đang bật</span>
+                <span className="pill pill--lime">Active</span>
               </button>
             ))}
 
@@ -583,15 +589,18 @@ export const OverviewPage: React.FC = () => {
               className="module-quick-row module-quick-row--dashed"
               onClick={() => navigate('modules')}
             >
-              <span className="pop-item__tile" style={{ background: 'var(--well-2)', color: 'var(--text)' }}>
+              <span
+                className="pop-item__tile"
+                style={{ background: 'var(--well-2)', color: 'var(--text)' }}
+              >
                 <IconPlus size={16} />
               </span>
               <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
-                  Module #4+ (Mở rộng sau)
+                  Module #4+ (Extensible)
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                  {state.futureModules.length} ý tưởng đang chờ phát triển
+                  {state.futureModules.length} ideas in personal roadmap
                 </div>
               </div>
               <IconChevronRight size={15} />

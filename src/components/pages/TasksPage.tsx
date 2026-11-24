@@ -124,7 +124,7 @@ export const TasksPage: React.FC = () => {
           type="button"
           className={`check-btn ${done ? 'is-done' : ''}`}
           onClick={(e) => toggleTaskDone(task.id, e.currentTarget)}
-          aria-label={`Đánh dấu ${task.title}`}
+          aria-label={`Toggle ${task.title}`}
         >
           <IconCheck size={12} />
         </button>
@@ -147,23 +147,28 @@ export const TasksPage: React.FC = () => {
             <span className={`stage-dot ${TASK_STATUS_META[task.status].dot}`} />
             <span>{TASK_STATUS_META[task.status].label}</span>
             <span>· {TASK_CATEGORY_META[task.category].label}</span>
-            <span style={{ color: due.overdue && !done ? 'var(--bad)' : undefined, fontWeight: due.overdue && !done ? 700 : undefined }}>
+            <span
+              style={{
+                color: due.overdue && !done ? 'var(--bad)' : undefined,
+                fontWeight: due.overdue && !done ? 700 : undefined,
+              }}
+            >
               · {due.text}
               {task.dueTime ? ` ${task.dueTime}` : ''}
             </span>
             {task.subtasks.length > 0 && (
               <span>
-                · {subDone}/{task.subtasks.length} bước
+                · {subDone}/{task.subtasks.length} steps
               </span>
             )}
             {task.recurrence !== 'none' && (
               <span>
                 · <IconRepeat size={11} style={{ verticalAlign: '-1px' }} />{' '}
                 {task.recurrence === 'daily'
-                  ? 'Hàng ngày'
+                  ? 'Daily'
                   : task.recurrence === 'weekly'
-                    ? 'Hàng tuần'
-                    : 'Hàng tháng'}
+                    ? 'Weekly'
+                    : 'Monthly'}
               </span>
             )}
           </div>
@@ -173,14 +178,14 @@ export const TasksPage: React.FC = () => {
           type="button"
           className="icon-btn"
           style={{ width: 30, height: 30, color: task.pinned ? 'var(--accent)' : 'var(--faint)' }}
-          aria-label="Ghim task"
+          aria-label="Pin task"
           onClick={() => toggleTaskPinned(task.id)}
         >
           <IconPin size={14} />
         </button>
 
         <span className={`pill ${TASK_PRIORITY_META[task.priority].pill}`}>
-          {task.priority === 'high' ? 'Cao' : task.priority === 'medium' ? 'TB' : 'Thấp'}
+          {TASK_PRIORITY_META[task.priority].short}
         </span>
       </div>
     );
@@ -190,10 +195,10 @@ export const TasksPage: React.FC = () => {
     <>
       <div className="phead">
         <div>
-          <h1 className="phead__title">Task cá nhân</h1>
+          <h1 className="phead__title">Tasks</h1>
           <p className="phead__sub">
-            {doneCount}/{totalCount} hoàn thành · {doingCount} đang làm
-            {overdueCount > 0 ? ` · ${overdueCount} quá hạn` : ''}
+            {doneCount}/{totalCount} completed · {doingCount} in progress
+            {overdueCount > 0 ? ` · ${overdueCount} overdue` : ''}
           </p>
         </div>
         <div className="phead__actions">
@@ -201,9 +206,9 @@ export const TasksPage: React.FC = () => {
             value={viewMode}
             onChange={(next) => navigate('tasks', next)}
             items={[
-              { id: 'agenda', label: 'Lịch trình' },
-              { id: 'board', label: 'Kanban' },
-              { id: 'list', label: 'Tất cả' },
+              { id: 'agenda', label: 'Agenda' },
+              { id: 'board', label: 'Board' },
+              { id: 'list', label: 'All' },
             ]}
           />
           <MagneticButton
@@ -212,7 +217,7 @@ export const TasksPage: React.FC = () => {
             onClick={() => openModal({ kind: 'new-task' })}
           >
             <IconPlus size={15} />
-            Task mới
+            New task
           </MagneticButton>
         </div>
       </div>
@@ -222,16 +227,16 @@ export const TasksPage: React.FC = () => {
         <input
           className="input"
           style={{ flex: 1, minWidth: 200 }}
-          placeholder="Thêm nhanh task cho hôm nay (nhấn Enter)..."
+          placeholder="Quick add a task for today (press Enter)..."
           value={quickTitle}
           onChange={(e) => setQuickTitle(e.target.value)}
         />
         <select
           className="select"
-          style={{ width: 160 }}
+          style={{ width: 150 }}
           value={quickCategory}
           onChange={(e) => setQuickCategory(e.target.value as TaskCategory)}
-          aria-label="Danh mục"
+          aria-label="Category"
         >
           {(Object.keys(TASK_CATEGORY_META) as TaskCategory[]).map((cat) => (
             <option key={cat} value={cat}>
@@ -244,15 +249,15 @@ export const TasksPage: React.FC = () => {
           style={{ width: 130 }}
           value={quickPriority}
           onChange={(e) => setQuickPriority(e.target.value as TaskPriority)}
-          aria-label="Ưu tiên"
+          aria-label="Priority"
         >
-          <option value="high">Ưu tiên cao</option>
-          <option value="medium">Trung bình</option>
-          <option value="low">Thấp</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
         </select>
         <button type="submit" className="btn btn--primary">
           <IconPlus size={15} />
-          Thêm nhanh
+          Add
         </button>
       </form>
 
@@ -264,7 +269,7 @@ export const TasksPage: React.FC = () => {
             className={`chip ${filterCat === 'all' ? 'is-active' : ''}`}
             onClick={() => setFilterCat('all')}
           >
-            Tất cả ({state.tasks.length})
+            All ({state.tasks.length})
           </button>
           {(Object.keys(TASK_CATEGORY_META) as TaskCategory[]).map((cat) => (
             <button
@@ -281,20 +286,20 @@ export const TasksPage: React.FC = () => {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
           <select
             className="select"
-            style={{ height: 34, width: 140, padding: '0 10px', fontSize: 12.5 }}
+            style={{ height: 34, width: 135, padding: '0 10px', fontSize: 12.5 }}
             value={filterPriority}
             onChange={(e) => setFilterPriority(e.target.value as TaskPriority | 'all')}
-            aria-label="Lọc độ ưu tiên"
+            aria-label="Filter priority"
           >
-            <option value="all">Mọi ưu tiên</option>
-            <option value="high">Ưu tiên cao</option>
-            <option value="medium">Trung bình</option>
-            <option value="low">Thấp</option>
+            <option value="all">All priorities</option>
+            <option value="high">High priority</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
           </select>
           <div className="inline-search">
             <IconSearch size={14} />
             <input
-              placeholder="Lọc task..."
+              placeholder="Filter tasks..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -311,9 +316,9 @@ export const TasksPage: React.FC = () => {
                 <div className="card__head">
                   <div>
                     <h2 className="card__title" style={{ color: 'var(--bad)' }}>
-                      Quá hạn ({agendaGroups.overdue.length})
+                      Overdue ({agendaGroups.overdue.length})
                     </h2>
-                    <p className="card__sub">Nên ưu tiên xử lý sớm hoặc dời lịch</p>
+                    <p className="card__sub">Prioritize or reschedule these items</p>
                   </div>
                 </div>
                 <div className="stack-list">{agendaGroups.overdue.map(renderTaskRow)}</div>
@@ -323,20 +328,20 @@ export const TasksPage: React.FC = () => {
             <div className="card">
               <div className="card__head">
                 <div>
-                  <h2 className="card__title">Hôm nay ({agendaGroups.dueToday.length})</h2>
-                  <p className="card__sub">Các việc trọng tâm trong ngày</p>
+                  <h2 className="card__title">Today ({agendaGroups.dueToday.length})</h2>
+                  <p className="card__sub">Your focus items for today</p>
                 </div>
                 <button
                   type="button"
                   className="chip"
                   onClick={() => openModal({ kind: 'new-task', defaultDate: today })}
                 >
-                  <IconPlus size={13} /> Thêm cho hôm nay
+                  <IconPlus size={13} /> Add for today
                 </button>
               </div>
               {agendaGroups.dueToday.length === 0 ? (
                 <div className="empty-state" style={{ padding: '24px 12px' }}>
-                  Không còn task nào cần làm hôm nay.
+                  No tasks remaining for today.
                 </div>
               ) : (
                 <div className="stack-list">{agendaGroups.dueToday.map(renderTaskRow)}</div>
@@ -346,13 +351,13 @@ export const TasksPage: React.FC = () => {
             <div className="card">
               <div className="card__head">
                 <div>
-                  <h2 className="card__title">Sắp tới ({agendaGroups.upcoming.length})</h2>
-                  <p className="card__sub">Kế hoạch những ngày tới</p>
+                  <h2 className="card__title">Upcoming ({agendaGroups.upcoming.length})</h2>
+                  <p className="card__sub">Planned for later this week</p>
                 </div>
               </div>
               {agendaGroups.upcoming.length === 0 ? (
                 <div className="empty-state" style={{ padding: '20px 12px' }}>
-                  Chưa có task cho những ngày tới.
+                  No upcoming tasks scheduled.
                 </div>
               ) : (
                 <div className="stack-list">{agendaGroups.upcoming.map(renderTaskRow)}</div>
@@ -363,7 +368,7 @@ export const TasksPage: React.FC = () => {
               <div className="card">
                 <div className="card__head">
                   <div>
-                    <h2 className="card__title">Đã hoàn thành ({agendaGroups.completed.length})</h2>
+                    <h2 className="card__title">Completed ({agendaGroups.completed.length})</h2>
                   </div>
                 </div>
                 <div className="stack-list">{agendaGroups.completed.map(renderTaskRow)}</div>
@@ -408,7 +413,7 @@ export const TasksPage: React.FC = () => {
                       type="button"
                       className="icon-btn"
                       style={{ width: 28, height: 28 }}
-                      aria-label={`Thêm task vào ${TASK_STATUS_META[st].label}`}
+                      aria-label={`Add task to ${TASK_STATUS_META[st].label}`}
                       onClick={() => openModal({ kind: 'new-task', defaultStatus: st })}
                     >
                       <IconPlus size={14} />
@@ -418,7 +423,7 @@ export const TasksPage: React.FC = () => {
                   <div className="kanban-col__list">
                     {colTasks.length === 0 ? (
                       <div className="empty-state" style={{ padding: '24px 10px', fontSize: 12.5 }}>
-                        Kéo task vào đây
+                        Drop tasks here
                       </div>
                     ) : (
                       colTasks.map((task) => {
@@ -436,12 +441,25 @@ export const TasksPage: React.FC = () => {
                             className="deal-card task-anim"
                             onClick={() => openDrawer({ kind: 'task', id: task.id })}
                           >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-                              <span className={`pill ${TASK_CATEGORY_META[task.category].pill}`} style={{ height: 22, fontSize: 11 }}>
+                            <div
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                gap: 8,
+                                marginBottom: 8,
+                              }}
+                            >
+                              <span
+                                className={`pill ${TASK_CATEGORY_META[task.category].pill}`}
+                                style={{ height: 22, fontSize: 11 }}
+                              >
                                 {TASK_CATEGORY_META[task.category].label}
                               </span>
-                              <span className={`pill ${TASK_PRIORITY_META[task.priority].pill}`} style={{ height: 22, fontSize: 11 }}>
-                                {task.priority === 'high' ? 'Cao' : task.priority === 'medium' ? 'TB' : 'Thấp'}
+                              <span
+                                className={`pill ${TASK_PRIORITY_META[task.priority].pill}`}
+                                style={{ height: 22, fontSize: 11 }}
+                              >
+                                {TASK_PRIORITY_META[task.priority].short}
                               </span>
                             </div>
                             <div
@@ -477,7 +495,10 @@ export const TasksPage: React.FC = () => {
                                 justifyContent: 'space-between',
                                 marginTop: 10,
                                 fontSize: 12,
-                                color: due.overdue && task.status !== 'done' ? 'var(--bad)' : 'var(--faint)',
+                                color:
+                                  due.overdue && task.status !== 'done'
+                                    ? 'var(--bad)'
+                                    : 'var(--faint)',
                               }}
                             >
                               <span>
@@ -486,7 +507,7 @@ export const TasksPage: React.FC = () => {
                               </span>
                               {task.subtasks.length > 0 && (
                                 <span>
-                                  {subDone}/{task.subtasks.length} bước
+                                  {subDone}/{task.subtasks.length} steps
                                 </span>
                               )}
                             </div>
@@ -505,13 +526,13 @@ export const TasksPage: React.FC = () => {
           <div className="card">
             <div className="card__head">
               <div>
-                <h2 className="card__title">Tất cả công việc ({filteredTasks.length})</h2>
-                <p className="card__sub">Nhấn vào bất kỳ task nào để mở chi tiết & checklist con</p>
+                <h2 className="card__title">All tasks ({filteredTasks.length})</h2>
+                <p className="card__sub">Click any task to edit notes and subtasks</p>
               </div>
             </div>
             {filteredTasks.length === 0 ? (
               <div className="empty-state" style={{ padding: '32px 12px' }}>
-                Không có task nào khớp với bộ lọc hiện tại.
+                No tasks match the current filter.
               </div>
             ) : (
               <div className="stack-list">{filteredTasks.map(renderTaskRow)}</div>

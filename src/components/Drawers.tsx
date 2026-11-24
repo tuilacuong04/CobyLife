@@ -70,21 +70,21 @@ export const Drawers: React.FC = () => {
           <button
             type="button"
             className="icon-btn"
-            aria-label="Ghim task"
-            title={task.pinned ? 'Bỏ ghim' : 'Ghim lên đầu'}
+            aria-label="Pin task"
+            title={task.pinned ? 'Unpin' : 'Pin to top'}
             style={{ color: task.pinned ? 'var(--accent)' : undefined }}
             onClick={() => toggleTaskPinned(task.id)}
           >
             <IconPin size={16} />
           </button>
-          <button type="button" className="icon-btn" aria-label="Đóng" onClick={closeDrawer}>
+          <button type="button" className="icon-btn" aria-label="Close" onClick={closeDrawer}>
             <IconClose size={17} />
           </button>
         </div>
 
         <div className="drawer__body">
           <div className="drawer-section">
-            <div className="drawer-section__title">Trạng thái</div>
+            <div className="drawer-section__title">Status</div>
             <div className="seg" style={{ width: '100%', justifyContent: 'space-between' }}>
               {(['todo', 'doing', 'done'] as TaskStatus[]).map((st) => (
                 <button
@@ -102,10 +102,10 @@ export const Drawers: React.FC = () => {
           </div>
 
           <div className="drawer-section">
-            <div className="drawer-section__title">Thông tin chi tiết</div>
+            <div className="drawer-section__title">Details</div>
             <div className="form-grid">
               <label className="field">
-                <span className="field__label">Hạn chót</span>
+                <span className="field__label">Due date</span>
                 <input
                   type="date"
                   className="input"
@@ -114,7 +114,7 @@ export const Drawers: React.FC = () => {
                 />
               </label>
               <label className="field">
-                <span className="field__label">Giờ</span>
+                <span className="field__label">Time</span>
                 <input
                   type="time"
                   className="input"
@@ -123,7 +123,7 @@ export const Drawers: React.FC = () => {
                 />
               </label>
               <label className="field">
-                <span className="field__label">Danh mục</span>
+                <span className="field__label">Category</span>
                 <select
                   className="select"
                   value={task.category}
@@ -137,19 +137,19 @@ export const Drawers: React.FC = () => {
                 </select>
               </label>
               <label className="field">
-                <span className="field__label">Độ ưu tiên</span>
+                <span className="field__label">Priority</span>
                 <select
                   className="select"
                   value={task.priority}
                   onChange={(e) => updateTask(task.id, { priority: e.target.value as TaskPriority })}
                 >
-                  <option value="high">Ưu tiên cao</option>
-                  <option value="medium">Trung bình</option>
-                  <option value="low">Thấp</option>
+                  <option value="high">High priority</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
                 </select>
               </label>
               <label className="field" style={{ gridColumn: '1 / -1' }}>
-                <span className="field__label">Lặp lại định kỳ</span>
+                <span className="field__label">Repeat</span>
                 <select
                   className="select"
                   value={task.recurrence}
@@ -157,10 +157,10 @@ export const Drawers: React.FC = () => {
                     updateTask(task.id, { recurrence: e.target.value as TaskRecurrence })
                   }
                 >
-                  <option value="none">Không lặp lại</option>
-                  <option value="daily">Hàng ngày</option>
-                  <option value="weekly">Hàng tuần</option>
-                  <option value="monthly">Hàng tháng</option>
+                  <option value="none">Does not repeat</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
                 </select>
               </label>
             </div>
@@ -168,7 +168,7 @@ export const Drawers: React.FC = () => {
 
           <div className="drawer-section">
             <div className="drawer-section__title">
-              Checklist con ({doneSub}/{task.subtasks.length})
+              Subtasks ({doneSub}/{task.subtasks.length})
             </div>
             <div className="stack-list">
               {task.subtasks.map((st) => (
@@ -177,7 +177,7 @@ export const Drawers: React.FC = () => {
                     type="button"
                     className={`check-btn ${st.done ? 'is-done' : ''}`}
                     onClick={() => toggleSubtask(task.id, st.id)}
-                    aria-label="Đánh dấu hoàn thành mục con"
+                    aria-label="Toggle subtask"
                   >
                     <IconCheck size={12} />
                   </button>
@@ -191,7 +191,7 @@ export const Drawers: React.FC = () => {
                     type="button"
                     className="icon-btn"
                     style={{ width: 28, height: 28 }}
-                    aria-label="Xóa mục con"
+                    aria-label="Delete subtask"
                     onClick={() => deleteSubtask(task.id, st.id)}
                   >
                     <IconClose size={13} />
@@ -209,24 +209,24 @@ export const Drawers: React.FC = () => {
               >
                 <input
                   className="input"
-                  placeholder="Thêm bước nhỏ..."
+                  placeholder="Add a subtask..."
                   value={newSubtask}
                   onChange={(e) => setNewSubtask(e.target.value)}
                 />
                 <button type="submit" className="btn btn--ghost">
                   <IconPlus size={15} />
-                  Thêm
+                  Add
                 </button>
               </form>
             </div>
           </div>
 
           <div className="drawer-section">
-            <div className="drawer-section__title">Ghi chú</div>
+            <div className="drawer-section__title">Notes</div>
             <textarea
               className="textarea"
               rows={4}
-              placeholder="Ghi chú chi tiết cho task..."
+              placeholder="Add notes or links..."
               value={task.notes}
               onChange={(e) => updateTask(task.id, { notes: e.target.value })}
             />
@@ -240,10 +240,10 @@ export const Drawers: React.FC = () => {
             onClick={() => deleteTask(task.id)}
           >
             <IconTrash size={15} />
-            Xóa task
+            Delete task
           </button>
           <button type="button" className="btn btn--primary" onClick={closeDrawer}>
-            Xong
+            Done
           </button>
         </div>
       </AnimatedDrawer>
@@ -261,34 +261,34 @@ export const Drawers: React.FC = () => {
       if (parsed > 0 && parsed !== tx.amount) {
         updateTransaction(tx.id, { amount: parsed });
         setTxAmountInput(String(parsed));
-        pushToast('Đã cập nhật số tiền giao dịch');
+        pushToast('Amount updated');
       }
     };
 
     return (
-      <AnimatedDrawer open onClose={closeDrawer} label="Chi tiết giao dịch">
+      <AnimatedDrawer open onClose={closeDrawer} label="Transaction details">
         <div className="drawer__head">
           <div>
-            <div className="drawer__sub">Chỉnh sửa giao dịch</div>
+            <div className="drawer__sub">Edit transaction</div>
             <h2 className="drawer__title">
               {tx.type === 'expense' ? '-' : tx.type === 'income' ? '+' : ''}
               {formatMoney(tx.amount, currency)}
             </h2>
           </div>
-          <button type="button" className="icon-btn" aria-label="Đóng" onClick={closeDrawer}>
+          <button type="button" className="icon-btn" aria-label="Close" onClick={closeDrawer}>
             <IconClose size={17} />
           </button>
         </div>
 
         <div className="drawer__body">
           <div className="drawer-section">
-            <div className="drawer-section__title">Loại giao dịch</div>
+            <div className="drawer-section__title">Type</div>
             <div className="seg" style={{ width: '100%' }}>
               {(
                 [
-                  { id: 'expense', label: 'Chi tiêu' },
-                  { id: 'income', label: 'Thu nhập' },
-                  { id: 'transfer', label: 'Chuyển ví' },
+                  { id: 'expense', label: 'Expense' },
+                  { id: 'income', label: 'Income' },
+                  { id: 'transfer', label: 'Transfer' },
                 ] as { id: TxType; label: string }[]
               ).map((item) => (
                 <button
@@ -320,7 +320,7 @@ export const Drawers: React.FC = () => {
           <div className="drawer-section">
             <div className="form-stack">
               <label className="field">
-                <span className="field__label">Số tiền (hỗ trợ 50k, 1.5tr)</span>
+                <span className="field__label">Amount (supports 50k, 1.5m)</span>
                 <input
                   className="input"
                   value={txAmountInput}
@@ -331,7 +331,7 @@ export const Drawers: React.FC = () => {
 
               <div className="form-grid">
                 <label className="field">
-                  <span className="field__label">Ngày</span>
+                  <span className="field__label">Date</span>
                   <input
                     type="date"
                     className="input"
@@ -342,7 +342,7 @@ export const Drawers: React.FC = () => {
 
                 <label className="field">
                   <span className="field__label">
-                    {tx.type === 'transfer' ? 'Từ ví' : 'Ví / Tài khoản'}
+                    {tx.type === 'transfer' ? 'From wallet' : 'Wallet'}
                   </span>
                   <select
                     className="select"
@@ -360,7 +360,7 @@ export const Drawers: React.FC = () => {
 
               {tx.type === 'transfer' ? (
                 <label className="field">
-                  <span className="field__label">Đến ví</span>
+                  <span className="field__label">To wallet</span>
                   <select
                     className="select"
                     value={tx.toWalletId || ''}
@@ -377,7 +377,7 @@ export const Drawers: React.FC = () => {
                 </label>
               ) : (
                 <label className="field">
-                  <span className="field__label">Danh mục</span>
+                  <span className="field__label">Category</span>
                   <select
                     className="select"
                     value={tx.categoryId}
@@ -393,11 +393,11 @@ export const Drawers: React.FC = () => {
               )}
 
               <label className="field">
-                <span className="field__label">Ghi chú</span>
+                <span className="field__label">Note</span>
                 <input
                   className="input"
                   value={tx.note}
-                  placeholder="Mô tả khoản chi / thu..."
+                  placeholder="Description..."
                   onChange={(e) => updateTransaction(tx.id, { note: e.target.value })}
                 />
               </label>
@@ -412,7 +412,7 @@ export const Drawers: React.FC = () => {
             onClick={() => deleteTransaction(tx.id)}
           >
             <IconTrash size={15} />
-            Xóa giao dịch
+            Delete
           </button>
           <button
             type="button"
@@ -422,7 +422,7 @@ export const Drawers: React.FC = () => {
               closeDrawer();
             }}
           >
-            Lưu & Đóng
+            Save & Close
           </button>
         </div>
       </AnimatedDrawer>

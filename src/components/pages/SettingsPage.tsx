@@ -54,11 +54,11 @@ export const SettingsPage: React.FC = () => {
     e.preventDefault();
     const clean = pinDraft.trim();
     if (clean.length < 4) {
-      pushToast('Mã PIN nên có ít nhất 4 ký tự.');
+      pushToast('PIN should be at least 4 characters.');
       return;
     }
     updateSettings({ pinCode: clean, pinEnabled: true });
-    pushToast('Đã bật khóa PIN cá nhân');
+    pushToast('PIN lock enabled');
   };
 
   const handleExport = () => {
@@ -70,7 +70,7 @@ export const SettingsPage: React.FC = () => {
     a.download = `sylva-personal-os-backup-${localIsoDate()}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    pushToast('Đã xuất file sao lưu toàn bộ (openGym + Tasks + Chi tiêu)');
+    pushToast('Exported unified backup (openGym + Tasks + Finance)');
   };
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,7 +80,7 @@ export const SettingsPage: React.FC = () => {
     reader.onload = () => {
       const res = importUnifiedBackup(String(reader.result || ''));
       if (!res.ok) {
-        pushToast(res.error || 'Không thể nhập file sao lưu');
+        pushToast(res.error || 'Could not import backup file');
       }
     };
     reader.readAsText(file);
@@ -91,9 +91,9 @@ export const SettingsPage: React.FC = () => {
     <>
       <div className="phead">
         <div>
-          <h1 className="phead__title">Cài đặt cá nhân</h1>
+          <h1 className="phead__title">Settings</h1>
           <p className="phead__sub">
-            Toàn bộ dữ liệu lưu riêng trên trình duyệt của bạn — không gửi lên máy chủ ngoài
+            All personal data stays locally in your browser — nothing leaves your device
           </p>
         </div>
       </div>
@@ -103,10 +103,10 @@ export const SettingsPage: React.FC = () => {
           value={activeTab}
           onChange={(next) => navigate('settings', next)}
           items={[
-            { id: 'profile', label: 'Hồ sơ' },
-            { id: 'appearance', label: 'Giao diện & Tiền tệ' },
-            { id: 'security', label: 'Khóa riêng tư (PIN)' },
-            { id: 'data', label: 'Sao lưu & Dữ liệu' },
+            { id: 'profile', label: 'Profile' },
+            { id: 'appearance', label: 'Appearance' },
+            { id: 'security', label: 'PIN Lock' },
+            { id: 'data', label: 'Data & Backup' },
           ]}
         />
       </div>
@@ -124,7 +124,7 @@ export const SettingsPage: React.FC = () => {
 
             <form className="form-stack" onSubmit={handleSaveProfile}>
               <label className="field">
-                <span className="field__label">Tên hiển thị</span>
+                <span className="field__label">Display name</span>
                 <input
                   className="input"
                   value={name}
@@ -132,7 +132,7 @@ export const SettingsPage: React.FC = () => {
                 />
               </label>
               <label className="field">
-                <span className="field__label">Khẩu hiệu / mô tả ngắn</span>
+                <span className="field__label">Subtitle</span>
                 <input
                   className="input"
                   value={tagline}
@@ -141,7 +141,7 @@ export const SettingsPage: React.FC = () => {
               </label>
 
               <div className="field">
-                <span className="field__label">Chọn ảnh đại diện</span>
+                <span className="field__label">Avatar</span>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   {AVATAR_OPTIONS.map((opt) => (
                     <button
@@ -163,7 +163,7 @@ export const SettingsPage: React.FC = () => {
 
               <div>
                 <button type="submit" className="btn btn--primary">
-                  Lưu hồ sơ
+                  Save profile
                 </button>
               </div>
             </form>
@@ -173,9 +173,9 @@ export const SettingsPage: React.FC = () => {
         {activeTab === 'appearance' && (
           <div className="card form-stack" style={{ maxWidth: 640 }}>
             <div>
-              <h2 className="card__title">Giao diện Smoked Glass / Milk Glass</h2>
+              <h2 className="card__title">Theme</h2>
               <p className="card__sub" style={{ marginBottom: 12 }}>
-                Tự động đồng bộ Dark / Light cho cả không gian chính và module openGym.
+                Syncs Dark / Light mode across the hub and embedded openGym.
               </p>
               <div className="seg">
                 <button
@@ -183,22 +183,22 @@ export const SettingsPage: React.FC = () => {
                   className={`seg__btn ${state.settings.theme === 'dark' ? 'is-active' : ''}`}
                   onClick={() => setTheme('dark')}
                 >
-                  Tối (Smoked Glass)
+                  Dark (Smoked Glass)
                 </button>
                 <button
                   type="button"
                   className={`seg__btn ${state.settings.theme === 'light' ? 'is-active' : ''}`}
                   onClick={() => setTheme('light')}
                 >
-                  Sáng (Milk Glass)
+                  Light (Milk Glass)
                 </button>
               </div>
             </div>
 
             <div style={{ paddingTop: 14, borderTop: '1px solid var(--line)' }}>
-              <h2 className="card__title">Đơn vị tiền tệ hiển thị</h2>
+              <h2 className="card__title">Display currency</h2>
               <p className="card__sub" style={{ marginBottom: 12 }}>
-                Áp dụng cho module Quản lí chi tiêu và Tổng quan.
+                Used across Finance and Overview cards.
               </p>
               <div className="seg">
                 {(['VND', 'USD'] as CurrencyCode[]).map((cur) => (
@@ -208,10 +208,10 @@ export const SettingsPage: React.FC = () => {
                     className={`seg__btn ${state.settings.currency === cur ? 'is-active' : ''}`}
                     onClick={() => {
                       updateSettings({ currency: cur });
-                      pushToast(`Đã đổi tiền tệ sang ${cur}`);
+                      pushToast(`Currency set to ${cur}`);
                     }}
                   >
-                    {cur === 'VND' ? 'Việt Nam Đồng (₫)' : 'US Dollar ($)'}
+                    {cur === 'VND' ? 'Vietnamese Dong (₫)' : 'US Dollar ($)'}
                   </button>
                 ))}
               </div>
@@ -222,43 +222,43 @@ export const SettingsPage: React.FC = () => {
         {activeTab === 'security' && (
           <div className="card form-stack" style={{ maxWidth: 640 }}>
             <div>
-              <h2 className="card__title">Khóa màn hình cá nhân bằng PIN</h2>
+              <h2 className="card__title">Personal PIN lock</h2>
               <p className="card__sub">
-                Tùy chọn yêu cầu nhập mã PIN mỗi lần mở trang để bảo vệ dữ liệu cá nhân trên thiết bị
-                dùng chung.
+                Optionally require a PIN on page load to keep your personal workspace private on
+                shared devices.
               </p>
             </div>
 
             <form className="form-stack" onSubmit={handleSavePin}>
               <label className="field">
-                <span className="field__label">Mã PIN (tối thiểu 4 số/ký tự)</span>
+                <span className="field__label">PIN (at least 4 characters)</span>
                 <input
                   type="password"
                   className="input"
                   value={pinDraft}
                   onChange={(e) => setPinDraft(e.target.value)}
-                  placeholder="VD: 1234"
+                  placeholder="e.g. 1234"
                 />
               </label>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <button type="submit" className="btn btn--primary">
                   <IconLock size={15} />
-                  {state.settings.pinEnabled ? 'Cập nhật mã PIN' : 'Bật khóa PIN'}
+                  {state.settings.pinEnabled ? 'Update PIN' : 'Enable PIN lock'}
                 </button>
                 {state.settings.pinEnabled && (
                   <>
                     <button type="button" className="btn btn--ghost" onClick={lockApp}>
-                      Khóa ngay
+                      Lock now
                     </button>
                     <button
                       type="button"
                       className="btn btn--danger"
                       onClick={() => {
                         updateSettings({ pinEnabled: false });
-                        pushToast('Đã tắt khóa PIN');
+                        pushToast('PIN lock disabled');
                       }}
                     >
-                      Tắt khóa PIN
+                      Disable PIN
                     </button>
                   </>
                 )}
@@ -270,19 +270,19 @@ export const SettingsPage: React.FC = () => {
         {activeTab === 'data' && (
           <div className="card form-stack" style={{ maxWidth: 680 }}>
             <div>
-              <h2 className="card__title">Sao lưu & Khôi phục hợp nhất (All-in-One)</h2>
+              <h2 className="card__title">All-in-One Backup & Restore</h2>
               <p className="card__sub">
-                Xuất 1 file JSON duy nhất chứa đồng thời toàn bộ dữ liệu{' '}
-                <strong>openGym ({gym.workoutsCount} buổi tập)</strong>,{' '}
-                <strong>Task ({state.tasks.length})</strong> và{' '}
-                <strong>Chi tiêu ({state.finance.transactions.length} giao dịch)</strong>.
+                Export a single JSON snapshot containing{' '}
+                <strong>openGym ({gym.workoutsCount} workouts)</strong>,{' '}
+                <strong>Tasks ({state.tasks.length})</strong>, and{' '}
+                <strong>Finance ({state.finance.transactions.length} transactions)</strong>.
               </p>
             </div>
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               <button type="button" className="btn btn--primary" onClick={handleExport}>
                 <IconDownload size={15} />
-                Xuất sao lưu toàn bộ (.json)
+                Export full backup (.json)
               </button>
               <button
                 type="button"
@@ -290,7 +290,7 @@ export const SettingsPage: React.FC = () => {
                 onClick={() => fileInputRef.current?.click()}
               >
                 <IconUpload size={15} />
-                Nhập từ file sao lưu
+                Import backup
               </button>
               <input
                 ref={fileInputRef}
@@ -303,11 +303,11 @@ export const SettingsPage: React.FC = () => {
 
             <div style={{ paddingTop: 16, borderTop: '1px solid var(--line)' }}>
               <h3 className="card__title" style={{ fontSize: 15 }}>
-                Dọn dữ liệu mẫu Tasks & Chi tiêu
+                Clear sample Tasks & Finance data
               </h3>
               <p className="card__sub" style={{ marginBottom: 12 }}>
-                Dùng nút này khi bạn muốn xóa sạch task & giao dịch mẫu để bắt đầu nhập dữ liệu thật
-                của riêng mình (không xóa dữ liệu openGym).
+                Wipes starter tasks and sample transactions so you can start logging your own real
+                data cleanly (keeps openGym untouched).
               </p>
 
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -317,7 +317,7 @@ export const SettingsPage: React.FC = () => {
                     className="btn btn--danger"
                     onClick={() => setConfirmClear(true)}
                   >
-                    Bắt đầu trắng (Xóa dữ liệu mẫu)
+                    Start fresh (Clear sample data)
                   </button>
                 ) : (
                   <>
@@ -329,14 +329,14 @@ export const SettingsPage: React.FC = () => {
                         setConfirmClear(false);
                       }}
                     >
-                      Xác nhận xóa sạch
+                      Confirm clear
                     </button>
                     <button
                       type="button"
                       className="btn btn--ghost"
                       onClick={() => setConfirmClear(false)}
                     >
-                      Hủy
+                      Cancel
                     </button>
                   </>
                 )}
@@ -347,7 +347,7 @@ export const SettingsPage: React.FC = () => {
                     className="btn btn--ghost"
                     onClick={() => setConfirmReset(true)}
                   >
-                    Khôi phục dữ liệu mẫu
+                    Restore sample data
                   </button>
                 ) : (
                   <button
@@ -358,7 +358,7 @@ export const SettingsPage: React.FC = () => {
                       setConfirmReset(false);
                     }}
                   >
-                    Xác nhận khôi phục mẫu
+                    Confirm restore
                   </button>
                 )}
               </div>

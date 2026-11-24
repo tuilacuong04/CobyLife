@@ -184,7 +184,7 @@ export function buildDemoState() {
     dayPlan,
     workouts, bodyweight, measurements, exWeights,
     targetW: TARGET_W,
-    lang: 'vi',
+    lang: 'en',
     accent: 'lime',
     theme: 'dark',
     // The history is rated, so the demo turns the column on and the stats get a scale to
