@@ -989,6 +989,8 @@ body,
 .tab-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   gap: 6px;
   height: 36px;
   padding: 0 16px;
@@ -1038,6 +1040,8 @@ body,
 .seg__btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   gap: 6px;
   height: 34px;
   padding: 0 14px;
