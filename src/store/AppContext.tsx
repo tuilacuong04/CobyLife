@@ -16,7 +16,27 @@ import {
   UserProfile,
 } from '../types';
 import { createEmptyPersonalState, createStarterState } from '../data/seedData';
-import { loadAppState, saveAppState } from '../utils/storage';
+import {
+  getLocalUpdatedAt,
+  hasStoredAppState,
+  loadAppState,
+  normalizePersistedState,
+  saveAppState,
+  setLocalUpdatedAt,
+} from '../utils/storage';
+import {
+  CloudDbConfig,
+  CloudSyncStatus,
+  DEFAULT_CLOUD_CONFIG,
+  isCloudConfigValid,
+  loadCloudConfig,
+  loadLocalIdbSnapshot,
+  pullFromCloudDb,
+  pushToCloudDb,
+  saveCloudConfigToStorage,
+  saveLocalIdbSnapshot,
+  UnifiedVaultPayload,
+} from '../utils/cloudDb';
 import {
   getOpenGymRawJson,
   OPENGYM_STATE_KEY,
@@ -158,6 +178,15 @@ interface AppContextValue {
   importUnifiedBackup: (rawJson: string) => { ok: boolean; error?: string };
   clearToEmpty: () => void;
   resetStarterData: () => void;
+
+  // Local IndexedDB & Cloud DB Sync (Supabase PostgreSQL / GitHub Gist)
+  cloudConfig: CloudDbConfig;
+  cloudStatus: CloudSyncStatus;
+  saveCloudConfig: (next: CloudDbConfig) => Promise<{ ok: boolean; message: string }>;
+  disconnectCloudDb: () => void;
+  syncCloudNow: () => Promise<void>;
+  pushCloudNow: () => Promise<void>;
+  pullCloudNow: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -173,13 +202,100 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [gymMounted, setGymMounted] = useState<boolean>(() => parseLocation().page === 'gym');
   const [gymHashTarget, setGymHashTarget] = useState<string>('#/home');
+  const [cloudConfig, setCloudConfig] = useState<CloudDbConfig>(() => loadCloudConfig());
+  const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>(() => {
+    const cfg = loadCloudConfig();
+    return {
+      state: isCloudConfigValid(cfg) ? 'syncing' : 'local',
+      provider: isCloudConfigValid(cfg) ? cfg.provider : 'none',
+      lastSyncedAt: null,
+      localDbReady: false,
+    };
+  });
 
   const stateRef = useRef(state);
   stateRef.current = state;
   const routeRef = useRef(route);
   routeRef.current = route;
+  const cloudConfigRef = useRef(cloudConfig);
+  cloudConfigRef.current = cloudConfig;
   const gymFrameRef = useRef<HTMLIFrameElement | null>(null);
   const exitTweenRef = useRef<gsap.core.Tween | null>(null);
+  const hydratedRef = useRef(false);
+  const skipNextPushRef = useRef(false);
+  const pushTimerRef = useRef<number | null>(null);
+  const lastFocusPullRef = useRef(0);
+
+  const buildVaultPayload = useCallback((updatedAt?: string): UnifiedVaultPayload => {
+    return {
+      format: 'coby-life-backup-v1',
+      updatedAt: updatedAt || new Date().toISOString(),
+      personalOs: stateRef.current,
+      openGym: getOpenGymRawJson(),
+    };
+  }, []);
+
+  const applyVaultPayload = useCallback((payload: UnifiedVaultPayload) => {
+    skipNextPushRef.current = true;
+    if (payload.personalOs && typeof payload.personalOs === 'object') {
+      const normalized = normalizePersistedState(payload.personalOs);
+      saveAppState(normalized);
+      setState(normalized);
+    }
+    if (payload.openGym) {
+      restoreOpenGymRawJson(payload.openGym);
+      setGym(readOpenGymSnapshot());
+      try {
+        gymFrameRef.current?.contentWindow?.postMessage(
+          { type: 'hub:reload-state' },
+          window.location.origin
+        );
+      } catch {
+        // Ignore
+      }
+    }
+    if (payload.updatedAt) {
+      setLocalUpdatedAt(payload.updatedAt);
+    }
+    void saveLocalIdbSnapshot(payload);
+  }, []);
+
+  const scheduleCloudPush = useCallback(() => {
+    const cfg = cloudConfigRef.current;
+    if (!cfg.autoSync || !isCloudConfigValid(cfg)) return;
+    if (pushTimerRef.current) {
+      window.clearTimeout(pushTimerRef.current);
+    }
+    pushTimerRef.current = window.setTimeout(async () => {
+      pushTimerRef.current = null;
+      const liveCfg = cloudConfigRef.current;
+      if (!isCloudConfigValid(liveCfg)) return;
+      const nowIso = getLocalUpdatedAt() || new Date().toISOString();
+      const payload = buildVaultPayload(nowIso);
+      setCloudStatus((prev) => ({ ...prev, state: 'syncing', error: undefined }));
+      try {
+        const res = await pushToCloudDb(liveCfg, payload);
+        if (res.createdGistId && liveCfg.provider === 'gist' && !liveCfg.gistId) {
+          const updatedCfg = { ...liveCfg, gistId: res.createdGistId };
+          saveCloudConfigToStorage(updatedCfg);
+          setCloudConfig(updatedCfg);
+        }
+        setCloudStatus((prev) => ({
+          ...prev,
+          state: 'synced',
+          provider: liveCfg.provider,
+          lastSyncedAt: new Date().toISOString(),
+          error: undefined,
+        }));
+      } catch (err) {
+        setCloudStatus((prev) => ({
+          ...prev,
+          state: 'error',
+          error: err instanceof Error ? err.message : 'Cloud DB push failed',
+        }));
+      }
+    }, 1400);
+  }, [buildVaultPayload]);
 
   const registerGymFrame = useCallback((frame: HTMLIFrameElement | null) => {
     gymFrameRef.current = frame;
@@ -199,9 +315,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setGym(readOpenGymSnapshot());
   }, []);
 
+  // Persist locally to localStorage + IndexedDB, then debounce Cloud DB sync
   useEffect(() => {
     saveAppState(state);
-  }, [state]);
+    if (!hydratedRef.current) {
+      hydratedRef.current = true;
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    setLocalUpdatedAt(nowIso);
+    void saveLocalIdbSnapshot(buildVaultPayload(nowIso));
+    if (skipNextPushRef.current) {
+      skipNextPushRef.current = false;
+      return;
+    }
+    scheduleCloudPush();
+  }, [state, buildVaultPayload, scheduleCloudPush]);
+
+  // Initial IndexedDB recovery & Cloud DB sync on mount
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!hasStoredAppState()) {
+        const idbSnap = await loadLocalIdbSnapshot();
+        if (active && idbSnap?.personalOs) {
+          applyVaultPayload(idbSnap);
+        }
+      }
+      const ok = await saveLocalIdbSnapshot(buildVaultPayload(getLocalUpdatedAt() || new Date().toISOString()));
+      if (!active) return;
+      setCloudStatus((prev) => ({ ...prev, localDbReady: ok }));
+
+      const cfg = cloudConfigRef.current;
+      if (!isCloudConfigValid(cfg) || !cfg.autoSync) {
+        setCloudStatus((prev) => ({ ...prev, state: 'local', provider: 'none' }));
+        return;
+      }
+
+      setCloudStatus((prev) => ({ ...prev, state: 'syncing', provider: cfg.provider, error: undefined }));
+      try {
+        const remote = await pullFromCloudDb(cfg);
+        if (!active) return;
+        const localTs = getLocalUpdatedAt();
+        if (remote?.payload && (!localTs || remote.updatedAt > localTs)) {
+          applyVaultPayload(remote.payload);
+        } else if (!remote) {
+          const nowIso = localTs || new Date().toISOString();
+          setLocalUpdatedAt(nowIso);
+          const res = await pushToCloudDb(cfg, buildVaultPayload(nowIso));
+          if (res.createdGistId && cfg.provider === 'gist' && !cfg.gistId) {
+            const nextCfg = { ...cfg, gistId: res.createdGistId };
+            saveCloudConfigToStorage(nextCfg);
+            setCloudConfig(nextCfg);
+          }
+        }
+        setCloudStatus((prev) => ({
+          ...prev,
+          state: 'synced',
+          provider: cfg.provider,
+          lastSyncedAt: new Date().toISOString(),
+          error: undefined,
+        }));
+      } catch (err) {
+        if (!active) return;
+        setCloudStatus((prev) => ({
+          ...prev,
+          state: 'error',
+          provider: cfg.provider,
+          error: err instanceof Error ? err.message : 'Cloud DB sync failed',
+        }));
+      }
+    })();
+
+    return () => {
+      active = false;
+      if (pushTimerRef.current) {
+        window.clearTimeout(pushTimerRef.current);
+      }
+    };
+  }, [applyVaultPayload, buildVaultPayload]);
 
   useEffect(() => {
     const theme = state.settings.theme;
@@ -216,12 +408,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [state.settings.theme]);
 
-  // Listen to openGym live updates (postMessage + storage + focus)
+  // Listen to openGym live updates (postMessage + storage + focus) and mirror to DB
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data && event.data.type === 'opengym:state-updated') {
         setGym(readOpenGymSnapshot());
+        const nowIso = new Date().toISOString();
+        setLocalUpdatedAt(nowIso);
+        void saveLocalIdbSnapshot(buildVaultPayload(nowIso));
+        scheduleCloudPush();
       }
     };
     const onStorage = (event: StorageEvent) => {
@@ -229,7 +425,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setGym(readOpenGymSnapshot());
       }
     };
-    const onFocus = () => setGym(readOpenGymSnapshot());
+    const onFocus = () => {
+      setGym(readOpenGymSnapshot());
+      const cfg = cloudConfigRef.current;
+      const now = Date.now();
+      if (cfg.autoSync && isCloudConfigValid(cfg) && now - lastFocusPullRef.current > 15000) {
+        lastFocusPullRef.current = now;
+        void pullFromCloudDb(cfg)
+          .then((remote) => {
+            const localTs = getLocalUpdatedAt();
+            if (remote?.payload && remote.updatedAt && (!localTs || remote.updatedAt > localTs)) {
+              applyVaultPayload(remote.payload);
+            }
+            setCloudStatus((prev) => ({
+              ...prev,
+              state: 'synced',
+              lastSyncedAt: new Date().toISOString(),
+              error: undefined,
+            }));
+          })
+          .catch(() => {
+            // Silent on background focus refresh
+          });
+      }
+    };
 
     window.addEventListener('message', onMessage);
     window.addEventListener('storage', onStorage);
@@ -239,7 +458,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('focus', onFocus);
     };
-  }, []);
+  }, [applyVaultPayload, buildVaultPayload, scheduleCloudPush]);
 
   useEffect(() => {
     const onPop = () => {
@@ -723,7 +942,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Unified Backup & Restore (Personal OS + openGym!)
   const exportUnifiedBackup = useCallback(() => {
     const payload = {
-      format: 'sylva-personal-os-backup-v1',
+      format: 'coby-life-backup-v1',
       exportedAt: new Date().toISOString(),
       personalOs: stateRef.current,
       openGym: getOpenGymRawJson(),
@@ -739,18 +958,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return { ok: false, error: 'Invalid JSON file.' };
         }
         if (parsed.personalOs && typeof parsed.personalOs === 'object') {
-          const fallback = createStarterState();
-          const merged: PersistedAppState = {
-            ...fallback,
-            ...parsed.personalOs,
-            settings: {
-              ...fallback.settings,
-              ...(parsed.personalOs.settings || {}),
-            },
-          };
-          setState(merged);
+          setState(normalizePersistedState(parsed.personalOs));
         } else if (Array.isArray(parsed.tasks) && parsed.finance) {
-          setState(parsed as PersistedAppState);
+          setState(normalizePersistedState(parsed));
         }
         if (parsed.openGym) {
           restoreOpenGymRawJson(parsed.openGym);
@@ -787,6 +997,173 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDrawer(null);
     pushToast('Sample data restored');
   }, [pushToast]);
+
+  const saveCloudConfig = useCallback(
+    async (next: CloudDbConfig): Promise<{ ok: boolean; message: string }> => {
+      if (!isCloudConfigValid(next)) {
+        return { ok: false, message: 'Fill in all required database connection fields.' };
+      }
+      setCloudStatus((prev) => ({
+        ...prev,
+        state: 'syncing',
+        provider: next.provider,
+        error: undefined,
+      }));
+      try {
+        const remote = await pullFromCloudDb(next);
+        let finalCfg = { ...next };
+        const localTs = getLocalUpdatedAt();
+        let summary = 'Connected & synced with Cloud DB';
+
+        if (remote?.payload && (!localTs || remote.updatedAt > localTs)) {
+          applyVaultPayload(remote.payload);
+          summary = 'Connected — pulled latest data from Cloud DB';
+        } else {
+          const nowIso = new Date().toISOString();
+          setLocalUpdatedAt(nowIso);
+          const pushed = await pushToCloudDb(next, buildVaultPayload(nowIso));
+          if (pushed.createdGistId && next.provider === 'gist' && !next.gistId) {
+            finalCfg = { ...next, gistId: pushed.createdGistId };
+          }
+          summary = remote
+            ? 'Connected — pushed local updates to Cloud DB'
+            : 'Connected — initialized your personal Cloud DB';
+        }
+
+        saveCloudConfigToStorage(finalCfg);
+        setCloudConfig(finalCfg);
+        setCloudStatus((prev) => ({
+          ...prev,
+          state: 'synced',
+          provider: finalCfg.provider,
+          lastSyncedAt: new Date().toISOString(),
+          error: undefined,
+        }));
+        pushToast(summary);
+        return { ok: true, message: summary };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Could not connect to Cloud DB';
+        setCloudStatus((prev) => ({
+          ...prev,
+          state: 'error',
+          provider: next.provider,
+          error: msg,
+        }));
+        return { ok: false, message: msg };
+      }
+    },
+    [applyVaultPayload, buildVaultPayload, pushToast]
+  );
+
+  const disconnectCloudDb = useCallback(() => {
+    const reset = { ...DEFAULT_CLOUD_CONFIG };
+    saveCloudConfigToStorage(reset);
+    setCloudConfig(reset);
+    setCloudStatus((prev) => ({
+      ...prev,
+      state: 'local',
+      provider: 'none',
+      error: undefined,
+    }));
+    pushToast('Disconnected Cloud DB — data remains stored locally');
+  }, [pushToast]);
+
+  const syncCloudNow = useCallback(async () => {
+    const cfg = cloudConfigRef.current;
+    if (!isCloudConfigValid(cfg)) {
+      pushToast('Connect Supabase or GitHub Gist in Settings → Cloud DB first');
+      return;
+    }
+    setCloudStatus((prev) => ({ ...prev, state: 'syncing', error: undefined }));
+    try {
+      const remote = await pullFromCloudDb(cfg);
+      const localTs = getLocalUpdatedAt();
+      if (remote?.payload && remote.updatedAt && (!localTs || remote.updatedAt > localTs)) {
+        applyVaultPayload(remote.payload);
+        pushToast('Pulled newer data from Cloud DB');
+      } else {
+        const nowIso = new Date().toISOString();
+        setLocalUpdatedAt(nowIso);
+        const res = await pushToCloudDb(cfg, buildVaultPayload(nowIso));
+        if (res.createdGistId && cfg.provider === 'gist' && !cfg.gistId) {
+          const nextCfg = { ...cfg, gistId: res.createdGistId };
+          saveCloudConfigToStorage(nextCfg);
+          setCloudConfig(nextCfg);
+        }
+        pushToast('Synced latest snapshot to Cloud DB');
+      }
+      setCloudStatus((prev) => ({
+        ...prev,
+        state: 'synced',
+        provider: cfg.provider,
+        lastSyncedAt: new Date().toISOString(),
+        error: undefined,
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Cloud DB sync failed';
+      setCloudStatus((prev) => ({ ...prev, state: 'error', error: msg }));
+      pushToast(msg);
+    }
+  }, [applyVaultPayload, buildVaultPayload, pushToast]);
+
+  const pushCloudNow = useCallback(async () => {
+    const cfg = cloudConfigRef.current;
+    if (!isCloudConfigValid(cfg)) return;
+    setCloudStatus((prev) => ({ ...prev, state: 'syncing', error: undefined }));
+    try {
+      const nowIso = new Date().toISOString();
+      setLocalUpdatedAt(nowIso);
+      const res = await pushToCloudDb(cfg, buildVaultPayload(nowIso));
+      if (res.createdGistId && cfg.provider === 'gist' && !cfg.gistId) {
+        const nextCfg = { ...cfg, gistId: res.createdGistId };
+        saveCloudConfigToStorage(nextCfg);
+        setCloudConfig(nextCfg);
+      }
+      setCloudStatus((prev) => ({
+        ...prev,
+        state: 'synced',
+        provider: cfg.provider,
+        lastSyncedAt: new Date().toISOString(),
+        error: undefined,
+      }));
+      pushToast('Uploaded local data → Cloud DB');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Push failed';
+      setCloudStatus((prev) => ({ ...prev, state: 'error', error: msg }));
+      pushToast(msg);
+    }
+  }, [buildVaultPayload, pushToast]);
+
+  const pullCloudNow = useCallback(async () => {
+    const cfg = cloudConfigRef.current;
+    if (!isCloudConfigValid(cfg)) return;
+    setCloudStatus((prev) => ({ ...prev, state: 'syncing', error: undefined }));
+    try {
+      const remote = await pullFromCloudDb(cfg);
+      if (!remote?.payload) {
+        setCloudStatus((prev) => ({
+          ...prev,
+          state: 'synced',
+          lastSyncedAt: new Date().toISOString(),
+        }));
+        pushToast('Cloud DB is empty — push local data first');
+        return;
+      }
+      applyVaultPayload(remote.payload);
+      setCloudStatus((prev) => ({
+        ...prev,
+        state: 'synced',
+        provider: cfg.provider,
+        lastSyncedAt: new Date().toISOString(),
+        error: undefined,
+      }));
+      pushToast('Restored snapshot from Cloud DB');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Pull failed';
+      setCloudStatus((prev) => ({ ...prev, state: 'error', error: msg }));
+      pushToast(msg);
+    }
+  }, [applyVaultPayload, pushToast]);
 
   const value = useMemo<AppContextValue>(
     () => ({
@@ -840,6 +1217,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       importUnifiedBackup,
       clearToEmpty,
       resetStarterData,
+      cloudConfig,
+      cloudStatus,
+      saveCloudConfig,
+      disconnectCloudDb,
+      syncCloudNow,
+      pushCloudNow,
+      pullCloudNow,
     }),
     [
       state,
@@ -892,6 +1276,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       importUnifiedBackup,
       clearToEmpty,
       resetStarterData,
+      cloudConfig,
+      cloudStatus,
+      saveCloudConfig,
+      disconnectCloudDb,
+      syncCloudNow,
+      pushCloudNow,
+      pullCloudNow,
     ]
   );
 

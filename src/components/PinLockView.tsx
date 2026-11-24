@@ -41,7 +41,7 @@ export const PinLockView: React.FC = () => {
               <IconSylvaMark size={18} />
             </span>
             <span className="brand__name">
-              Sylva<span className="brand__tag">LIFE</span>
+              Coby<span className="brand__tag">LIFE</span>
             </span>
           </div>
 

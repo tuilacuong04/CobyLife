@@ -238,3 +238,31 @@ export const IconTarget: React.FC<IconProps> = ({ size = 16, style, className })
     <circle cx="12" cy="12" r="1" fill="currentColor" />
   </svg>
 );
+
+export const IconDatabase: React.FC<IconProps> = ({ size = 16, style, className }) => (
+  <svg {...base(size, style, className)}>
+    <ellipse cx="12" cy="6" rx="7.5" ry="3" />
+    <path d="M4.5 6v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3V6" />
+    <path d="M4.5 12v6c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3v-6" />
+  </svg>
+);
+
+export const IconCloud: React.FC<IconProps> = ({ size = 16, style, className }) => (
+  <svg {...base(size, style, className)}>
+    <path d="M6.5 18.5h10a4 4 0 0 0 .8-7.92A5.5 5.5 0 0 0 6.8 9.2 4 4 0 0 0 6.5 18.5Z" />
+  </svg>
+);
+
+export const IconRefresh: React.FC<IconProps> = ({ size = 15, style, className }) => (
+  <svg {...base(size, style, className)}>
+    <path d="M20 11a8 8 0 1 0 2 5.3" />
+    <path d="M20 4v7h-7" />
+  </svg>
+);
+
+export const IconCopy: React.FC<IconProps> = ({ size = 15, style, className }) => (
+  <svg {...base(size, style, className)}>
+    <rect x="9" y="9" width="11" height="11" rx="2.5" />
+    <path d="M5 15H4.5A2.5 2.5 0 0 1 2 12.5v-8A2.5 2.5 0 0 1 4.5 2h8A2.5 2.5 0 0 1 15 4.5V5" />
+  </svg>
+);

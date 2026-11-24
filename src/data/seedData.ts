@@ -259,7 +259,7 @@ export function createStarterState(): PersistedAppState {
       pinCode: '1234',
       profile: {
         name: 'Cuong',
-        tagline: 'Personal OS · Gym · Tasks · Finance',
+        tagline: 'Coby LIFE · Personal OS',
         avatar: '/images/rep-luca.svg',
       },
       enabledModules: {

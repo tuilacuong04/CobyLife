@@ -18,6 +18,9 @@ import {
 import { RepAvatar } from './Avatar';
 import { AnimatedPopover, MagneticButton } from './Motion';
 import {
+  IconChevronRight,
+  IconDatabase,
+  IconDownload,
   IconDumbbell,
   IconLock,
   IconMenu,
@@ -47,7 +50,7 @@ const PAGE_LABELS: Record<PageId, string> = {
 const MODULE_IDS: ModuleId[] = ['gym', 'tasks', 'finance'];
 const NAV_IDS: PageId[] = ['overview', 'gym', 'tasks', 'finance', 'modules'];
 
-const SIDEBAR_STORAGE_KEY = 'sylva_personal_sidebar_v1';
+const SIDEBAR_STORAGE_KEY = 'coby_life_sidebar_v1';
 const STAGGER_STEP = 0.036;
 const TOTAL_SIDE_ITEMS = 14; // 0..13
 const TOTAL_FLYERS = 10; // 0..2 module tiles, 3..7 nav items, 8 settings, 9 theme
@@ -72,6 +75,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     route,
     drawer,
     modal,
+    cloudStatus,
     navigate,
     openGymView,
     openModal,
@@ -572,7 +576,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `sylva-personal-backup-${today}.json`;
+    a.download = `coby-life-backup-${today}.json`;
     a.click();
     URL.revokeObjectURL(url);
     setOpenPopover(null);
@@ -753,7 +757,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                   <IconSylvaMark size={18} />
                 </span>
                 <span className="brand__name">
-                  Sylva<span className="brand__tag">LIFE</span>
+                  Coby<span className="brand__tag">LIFE</span>
                 </span>
               </button>
               <button
@@ -1114,60 +1118,136 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                 className="popover--account"
                 onClose={() => setOpenPopover(null)}
               >
-                <div className="acct-head">
-                  <div className="acct-head__name">{profile.name}</div>
-                  <div className="acct-head__email">{profile.tagline}</div>
-                </div>
-                <button
-                  type="button"
-                  className="pop-item"
-                  onClick={() => {
-                    setOpenPopover(null);
-                    handleNav('settings', 'profile');
-                  }}
-                >
-                  <span className="pop-item__text">
-                    <span className="pop-item__title">Settings</span>
-                    <span className="pop-item__sub">Profile, currency, PIN lock</span>
-                  </span>
-                </button>
-                <button type="button" className="pop-item" onClick={handleQuickExport}>
-                  <span className="pop-item__text">
-                    <span className="pop-item__title">Export full backup (JSON)</span>
-                    <span className="pop-item__sub">openGym + Tasks + Finance</span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="pop-item"
-                  onClick={() => {
-                    setOpenPopover(null);
-                    toggleTheme();
-                  }}
-                >
-                  <span className="pop-item__text">
-                    <span className="pop-item__title">
-                      {theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                <div className="acct-card">
+                  <RepAvatar src={profile.avatar} name={profile.name} size={40} />
+                  <div className="acct-card__info">
+                    <div className="acct-card__name">{profile.name}</div>
+                    <div className="acct-card__sub">{profile.tagline}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className={`db-badge db-badge--${cloudStatus.state}`}
+                    title="Manage Cloud Database"
+                    onClick={() => {
+                      setOpenPopover(null);
+                      handleNav('settings', 'database');
+                    }}
+                  >
+                    <span className="db-badge__dot" />
+                    <span>
+                      {cloudStatus.state === 'synced'
+                        ? 'Synced'
+                        : cloudStatus.state === 'syncing'
+                          ? 'Syncing'
+                          : cloudStatus.state === 'error'
+                            ? 'DB Error'
+                            : 'Local DB'}
                     </span>
-                    <span className="pop-item__sub">Syncs with openGym</span>
-                  </span>
-                </button>
-                {pinEnabled && (
+                  </button>
+                </div>
+
+                <div className="pop-group">
                   <button
                     type="button"
                     className="pop-item"
                     onClick={() => {
                       setOpenPopover(null);
-                      lockApp();
+                      handleNav('settings', 'database');
                     }}
                   >
+                    <span
+                      className={`pop-item__icon ${
+                        cloudStatus.state === 'synced' ? 'pop-item__icon--accent' : ''
+                      }`}
+                    >
+                      <IconDatabase size={16} />
+                    </span>
                     <span className="pop-item__text">
-                      <span className="pop-item__title" style={{ color: 'var(--bad)' }}>
-                        Lock workspace
+                      <span className="pop-item__title">Cloud Database</span>
+                      <span className="pop-item__sub">
+                        {cloudStatus.provider === 'supabase'
+                          ? 'Supabase Postgres · auto-sync'
+                          : cloudStatus.provider === 'gist'
+                            ? 'GitHub Private Gist · auto-sync'
+                            : 'Connect Supabase or Gist sync'}
                       </span>
                     </span>
+                    <IconChevronRight size={14} className="pop-item__chev" />
                   </button>
-                )}
+
+                  <button
+                    type="button"
+                    className="pop-item"
+                    onClick={() => {
+                      setOpenPopover(null);
+                      handleNav('settings', 'profile');
+                    }}
+                  >
+                    <span className="pop-item__icon">
+                      <IconSettings size={16} />
+                    </span>
+                    <span className="pop-item__text">
+                      <span className="pop-item__title">Settings</span>
+                      <span className="pop-item__sub">Profile, currency &amp; PIN lock</span>
+                    </span>
+                    <IconChevronRight size={14} className="pop-item__chev" />
+                  </button>
+
+                  <button type="button" className="pop-item" onClick={handleQuickExport}>
+                    <span className="pop-item__icon">
+                      <IconDownload size={16} />
+                    </span>
+                    <span className="pop-item__text">
+                      <span className="pop-item__title">Export JSON backup</span>
+                      <span className="pop-item__sub">openGym + Tasks + Finance</span>
+                    </span>
+                  </button>
+                </div>
+
+                <div className="pop-divider" />
+
+                <div className="pop-group">
+                  <button
+                    type="button"
+                    className="pop-item"
+                    role="switch"
+                    aria-checked={theme === 'dark'}
+                    onClick={toggleTheme}
+                  >
+                    <span className="pop-item__icon">
+                      {theme === 'dark' ? <IconMoon size={16} /> : <IconSun size={16} />}
+                    </span>
+                    <span className="pop-item__text">
+                      <span className="pop-item__title">Dark theme</span>
+                      <span className="pop-item__sub">Syncs with openGym</span>
+                    </span>
+                    <span
+                      className={`switch ${theme === 'dark' ? 'is-on' : ''}`}
+                      aria-hidden="true"
+                    >
+                      <span className="switch__knob" />
+                    </span>
+                  </button>
+
+                  {pinEnabled && (
+                    <button
+                      type="button"
+                      className="pop-item pop-item--danger"
+                      onClick={() => {
+                        setOpenPopover(null);
+                        lockApp();
+                      }}
+                    >
+                      <span className="pop-item__icon pop-item__icon--danger">
+                        <IconLock size={16} />
+                      </span>
+                      <span className="pop-item__text">
+                        <span className="pop-item__title">Lock workspace</span>
+                        <span className="pop-item__sub">Require PIN to reopen</span>
+                      </span>
+                    </button>
+                  )}
+                </div>
               </AnimatedPopover>
             </div>
           </div>
