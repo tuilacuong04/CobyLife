@@ -14,13 +14,13 @@ export const PinLockView: React.FC = () => {
   const handleUnlock = (e: React.FormEvent) => {
     e.preventDefault();
     if (!pin.trim()) {
-      setError('Nhập mã PIN để mở khóa.');
+      setError('Enter your PIN to unlock.');
       animateErrorShake(cardRef.current);
       return;
     }
     const ok = unlockApp(pin);
     if (!ok) {
-      setError('Mã PIN chưa đúng.');
+      setError('Incorrect PIN.');
       animateErrorShake(cardRef.current);
       return;
     }
@@ -45,12 +45,12 @@ export const PinLockView: React.FC = () => {
             </span>
           </div>
 
-          <h1 className="signin__title">Xin chào, {state.settings.profile.name}</h1>
-          <p className="signin__sub">Không gian cá nhân đang được khóa bằng mã PIN.</p>
+          <h1 className="signin__title">Welcome back, {state.settings.profile.name}</h1>
+          <p className="signin__sub">Your personal workspace is locked with a PIN.</p>
 
           <form className="form-stack" onSubmit={handleUnlock} noValidate>
             <label className="field">
-              <span className="field__label">Mã PIN cá nhân</span>
+              <span className="field__label">Personal PIN</span>
               <input
                 className="input"
                 type="password"
@@ -61,14 +61,14 @@ export const PinLockView: React.FC = () => {
                   setPin(e.target.value);
                   if (error) setError('');
                 }}
-                placeholder="Nhập mã PIN"
+                placeholder="Enter PIN"
               />
               {error && <span className="field__error">{error}</span>}
             </label>
 
             <MagneticButton type="submit" className="btn btn--primary" style={{ width: '100%' }}>
               <IconLock size={15} />
-              Mở khóa không gian
+              Unlock workspace
             </MagneticButton>
           </form>
         </div>

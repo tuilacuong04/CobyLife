@@ -1,7 +1,7 @@
 import { PersistedAppState } from '../types';
 import { createStarterState } from '../data/seedData';
 
-export const APP_STORAGE_KEY = 'sylva_personal_os_v1';
+export const APP_STORAGE_KEY = 'sylva_personal_os_v2';
 
 export function loadAppState(): PersistedAppState {
   try {
@@ -11,7 +11,7 @@ export function loadAppState(): PersistedAppState {
     const fallback = createStarterState();
     if (!parsed || typeof parsed !== 'object') return fallback;
     return {
-      version: 1,
+      version: 2,
       tasks: Array.isArray(parsed.tasks) ? parsed.tasks : fallback.tasks,
       finance:
         parsed.finance &&

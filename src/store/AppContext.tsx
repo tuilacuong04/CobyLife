@@ -370,7 +370,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         settings: { ...prev.settings, profile: { ...prev.settings.profile, ...patch } },
       }));
-      pushToast('Đã cập nhật hồ sơ cá nhân');
+      pushToast('Profile updated');
     },
     [pushToast]
   );
@@ -394,7 +394,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           },
         };
       });
-      pushToast('Đã cập nhật trạng thái module');
+      pushToast('Module visibility updated');
     },
     [pushToast]
   );
@@ -410,7 +410,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         completedAt: input.status === 'done' ? localIsoDate() : undefined,
       };
       setState((prev) => ({ ...prev, tasks: [task, ...prev.tasks] }));
-      pushToast(`Đã thêm task "${task.title}"`);
+      pushToast(`Added "${task.title}"`);
       return task;
     },
     [pushToast]
@@ -432,7 +432,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const today = localIsoDate();
 
       if (status === 'done' && anchorEl) {
-        spawnFloatUp('Xong!', anchorEl.getBoundingClientRect());
+        spawnFloatUp('Done!', anchorEl.getBoundingClientRect());
       }
 
       setState((prev) => {
@@ -468,8 +468,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       pushToast(
         status === 'done'
-          ? `Hoàn thành "${existing.title}"`
-          : `Chuyển "${existing.title}" sang ${status === 'doing' ? 'Đang làm' : 'Cần làm'}`,
+          ? `Completed "${existing.title}"`
+          : `Moved "${existing.title}" to ${status === 'doing' ? 'In Progress' : 'To Do'}`,
         () => {
           setState((prev) => ({
             ...prev,
@@ -505,7 +505,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!existing) return;
       setState((prev) => ({ ...prev, tasks: prev.tasks.filter((t) => t.id !== id) }));
       setDrawer((d) => (d?.kind === 'task' && d.id === id ? null : d));
-      pushToast(`Đã xóa "${existing.title}"`, () => {
+      pushToast(`Deleted "${existing.title}"`, () => {
         setState((prev) => ({ ...prev, tasks: [existing, ...prev.tasks] }));
       });
     },
@@ -582,8 +582,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         },
       }));
       const label =
-        tx.type === 'expense' ? 'chi tiêu' : tx.type === 'income' ? 'thu nhập' : 'chuyển ví';
-      pushToast(`Đã ghi nhận ${label}`);
+        tx.type === 'expense' ? 'Expense' : tx.type === 'income' ? 'Income' : 'Transfer';
+      pushToast(`${label} recorded`);
       return tx;
     },
     [pushToast]
@@ -613,7 +613,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         },
       }));
       setDrawer((d) => (d?.kind === 'transaction' && d.id === id ? null : d));
-      pushToast('Đã xóa giao dịch', () => {
+      pushToast('Transaction deleted', () => {
         setState((prev) => ({
           ...prev,
           finance: {
@@ -636,7 +636,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           wallets: [...prev.finance.wallets, wallet],
         },
       }));
-      pushToast(`Đã thêm ví "${wallet.name}"`);
+      pushToast(`Added wallet "${wallet.name}"`);
       return wallet;
     },
     [pushToast]
@@ -663,7 +663,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           wallets: prev.finance.wallets.filter((w) => w.id !== id),
         },
       }));
-      pushToast(`Đã xóa ví "${existing.name}"`, () => {
+      pushToast(`Deleted wallet "${existing.name}"`, () => {
         setState((prev) => ({
           ...prev,
           finance: {
@@ -690,7 +690,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               : [...prev.finance.budgets, { categoryId, monthlyLimit }];
         return { ...prev, finance: { ...prev.finance, budgets } };
       });
-      pushToast('Đã cập nhật hạn mức ngân sách');
+      pushToast('Budget updated');
     },
     [pushToast]
   );
@@ -700,7 +700,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     (input: Omit<FutureModuleIdea, 'id'>) => {
       const idea: FutureModuleIdea = { ...input, id: uid('idea') };
       setState((prev) => ({ ...prev, futureModules: [idea, ...prev.futureModules] }));
-      pushToast(`Đã lưu ý tưởng module "${idea.name}"`);
+      pushToast(`Saved idea "${idea.name}"`);
     },
     [pushToast]
   );
@@ -713,7 +713,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...prev,
         futureModules: prev.futureModules.filter((i) => i.id !== id),
       }));
-      pushToast('Đã xóa ý tưởng module', () => {
+      pushToast('Idea removed', () => {
         setState((prev) => ({ ...prev, futureModules: [existing, ...prev.futureModules] }));
       });
     },
@@ -736,7 +736,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(rawJson);
         if (!parsed || typeof parsed !== 'object') {
-          return { ok: false, error: 'File JSON không hợp lệ.' };
+          return { ok: false, error: 'Invalid JSON file.' };
         }
         if (parsed.personalOs && typeof parsed.personalOs === 'object') {
           const fallback = createStarterState();
@@ -764,12 +764,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Ignore
           }
         }
-        pushToast('Đã khôi phục toàn bộ dữ liệu thành công');
+        pushToast('Full backup restored');
         return { ok: true };
       } catch (err) {
         return {
           ok: false,
-          error: err instanceof Error ? err.message : 'Không thể đọc file sao lưu.',
+          error: err instanceof Error ? err.message : 'Could not parse backup file.',
         };
       }
     },
@@ -779,13 +779,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const clearToEmpty = useCallback(() => {
     setState(createEmptyPersonalState());
     setDrawer(null);
-    pushToast('Đã dọn sạch dữ liệu mẫu Tasks & Chi tiêu để bạn bắt đầu mới');
+    pushToast('Cleared sample Tasks & Finance data — ready for a fresh start');
   }, [pushToast]);
 
   const resetStarterData = useCallback(() => {
     setState(createStarterState());
     setDrawer(null);
-    pushToast('Đã khôi phục dữ liệu mẫu');
+    pushToast('Sample data restored');
   }, [pushToast]);
 
   const value = useMemo<AppContextValue>(

@@ -53,7 +53,7 @@ const ToastRow: React.FC<{ item: ToastItem; onDismiss: (id: string) => void }> =
           className="toast__undo"
           onClick={() => handleClose(() => item.undo?.())}
         >
-          Hoàn tác
+          Undo
         </button>
       )}
     </div>

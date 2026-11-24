@@ -1385,9 +1385,9 @@ export default function Settings({ page = null, find = null, via = null, entryKe
             onClick={connectServer} />}
           <KeptChangesRows />
         </> : DEMO ? <>
-          <Row icon="lock" iconTint="var(--acc)" title="Chế độ cá nhân (Local Browser)" subtitle="Toàn bộ dữ liệu gym được lưu riêng trên trình duyệt của bạn. Sao lưu bất cứ lúc nào trong Dữ liệu & sao lưu." />
-          <Row icon="reset" iconTint="var(--blue)" title="Khôi phục lịch tập mẫu" accessory="chevron"
-            onClick={() => confirmSheet({ title: 'Khôi phục dữ liệu mẫu?', message: 'Đặt lại lịch Push/Pull/Legs, nhật ký tập và cân nặng mẫu ban đầu.', confirmText: 'Khôi phục', onConfirm: () => { resetDemo(); nav('/home'); toast('Đã khôi phục dữ liệu mẫu') } })} />
+          <Row icon="lock" iconTint="var(--acc)" title="Personal local mode" subtitle="All gym data stays locally in this browser. Export anytime in Data & backup." />
+          <Row icon="reset" iconTint="var(--blue)" title="Restore sample plan" accessory="chevron"
+            onClick={() => confirmSheet({ title: 'Restore sample data?', message: 'Resets the Push/Pull/Legs plan, sample workouts, and weigh-ins back to defaults.', confirmText: 'Restore', onConfirm: () => { resetDemo(); nav('/home'); toast('Sample data restored') } })} />
         </> : user ? <>
           {community && <Row icon="globe" iconTint="var(--blue)" title={t('Community')} subtitle={t('What people on this server shared')} accessory="chevron" onClick={() => nav('/community')} />}
           {user.admin && <Row icon="crown" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}

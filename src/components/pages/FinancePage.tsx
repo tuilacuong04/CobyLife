@@ -5,9 +5,9 @@ import {
   currentMonthKey,
   formatMoney,
   formatMoneyCompact,
-  formatMonthLabelVi,
-  formatMonthShortVi,
-  formatShortDateVi,
+  formatMonthLabel,
+  formatMonthShort,
+  formatShortDate,
   localIsoDate,
   parseSmartAmount,
   shiftMonthKey,
@@ -49,7 +49,6 @@ export const FinancePage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [hoverMonthIdx, setHoverMonthIdx] = useState<number | null>(null);
 
-  // Quick-add expense bar state
   const [quickAmount, setQuickAmount] = useState('');
   const [quickNote, setQuickNote] = useState('');
   const [quickCat, setQuickCat] = useState(
@@ -57,7 +56,6 @@ export const FinancePage: React.FC = () => {
   );
   const [quickWallet, setQuickWallet] = useState(() => state.finance.wallets[0]?.id || '');
 
-  // Inline budget edit
   const [editingBudgetCat, setEditingBudgetCat] = useState<string | null>(null);
   const [budgetDraft, setBudgetDraft] = useState('');
 
@@ -114,7 +112,6 @@ export const FinancePage: React.FC = () => {
     return { income, expense, net, savingsRate, totalBalance, byCat, breakdown };
   }, [monthTransactions, walletBalances, catMap]);
 
-  // 6-Month Cashflow Chart Data
   const sixMonthSeries = useMemo(() => {
     const months = Array.from({ length: 6 }, (_, i) => shiftMonthKey(monthKey, i - 5));
     return months.map((mk) => {
@@ -127,8 +124,8 @@ export const FinancePage: React.FC = () => {
       }
       return {
         monthKey: mk,
-        label: formatMonthShortVi(mk),
-        fullLabel: formatMonthLabelVi(mk),
+        label: formatMonthShort(mk),
+        fullLabel: formatMonthLabel(mk),
         income: inc,
         expense: exp,
       };
@@ -167,7 +164,7 @@ export const FinancePage: React.FC = () => {
     e.preventDefault();
     const amount = parseSmartAmount(quickAmount);
     if (amount <= 0) {
-      pushToast('Nhập số tiền hợp lệ (VD: 45k, 1.2tr)');
+      pushToast('Enter a valid amount (e.g., 45k, 1.2m)');
       return;
     }
     const targetWallet = quickWallet || state.finance.wallets[0]?.id;
@@ -180,14 +177,14 @@ export const FinancePage: React.FC = () => {
       categoryId: targetCat,
       walletId: targetWallet,
       date: localIsoDate(),
-      note: quickNote.trim() || catMap.get(targetCat)?.name || 'Chi tiêu',
+      note: quickNote.trim() || catMap.get(targetCat)?.name || 'Expense',
     });
     setQuickAmount('');
     setQuickNote('');
   };
 
   const handleExportCsv = () => {
-    const header = ['Ngay', 'Loai', 'SoTien', 'DanhMuc', 'Vi', 'DenVi', 'GhiChu'];
+    const header = ['Date', 'Type', 'Amount', 'Category', 'Wallet', 'ToWallet', 'Note'];
     const rows = filteredTx.map((tx) => [
       tx.date,
       tx.type,
@@ -202,10 +199,10 @@ export const FinancePage: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `chi-tieu-${monthKey}.csv`;
+    a.download = `finance-${monthKey}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    pushToast(`Đã xuất ${filteredTx.length} giao dịch ra CSV`);
+    pushToast(`Exported ${filteredTx.length} transactions to CSV`);
   };
 
   const expenseCategories = state.finance.categories.filter((c) => c.kind === 'expense');
@@ -214,9 +211,9 @@ export const FinancePage: React.FC = () => {
     <>
       <div className="phead">
         <div>
-          <h1 className="phead__title">Quản lí chi tiêu</h1>
+          <h1 className="phead__title">Finance</h1>
           <p className="phead__sub">
-            {formatMonthLabelVi(monthKey)} · Số dư hiện tại:{' '}
+            {formatMonthLabel(monthKey)} · Total balance:{' '}
             <strong>{formatMoney(monthStats.totalBalance, currency)}</strong>
           </p>
         </div>
@@ -226,17 +223,17 @@ export const FinancePage: React.FC = () => {
               type="button"
               className="icon-btn"
               style={{ width: 32, height: 32 }}
-              aria-label="Tháng trước"
+              aria-label="Previous month"
               onClick={() => setMonthKey((m) => shiftMonthKey(m, -1))}
             >
               <IconChevronLeft size={15} />
             </button>
-            <span className="month-stepper__label">{formatMonthLabelVi(monthKey)}</span>
+            <span className="month-stepper__label">{formatMonthLabel(monthKey)}</span>
             <button
               type="button"
               className="icon-btn"
               style={{ width: 32, height: 32 }}
-              aria-label="Tháng sau"
+              aria-label="Next month"
               onClick={() => setMonthKey((m) => shiftMonthKey(m, 1))}
             >
               <IconChevronRight size={15} />
@@ -249,7 +246,7 @@ export const FinancePage: React.FC = () => {
             onClick={() => openModal({ kind: 'new-tx', defaultType: 'income' })}
           >
             <IconArrowDownLeft size={15} />
-            Thu nhập
+            Income
           </button>
 
           <MagneticButton
@@ -258,21 +255,20 @@ export const FinancePage: React.FC = () => {
             onClick={() => openModal({ kind: 'new-tx', defaultType: 'expense' })}
           >
             <IconPlus size={15} />
-            Ghi chi tiêu
+            Expense
           </MagneticButton>
         </div>
       </div>
 
-      {/* Sub-view Switcher */}
       <div style={{ marginBottom: 16 }}>
         <SlidingSegmented
           value={tab}
           onChange={(next) => navigate('finance', next)}
           items={[
-            { id: 'overview', label: 'Tổng quan & Biểu đồ' },
-            { id: 'transactions', label: `Sổ giao dịch (${monthTransactions.length})` },
-            { id: 'budgets', label: 'Ngân sách' },
-            { id: 'wallets', label: `Ví (${state.finance.wallets.length})` },
+            { id: 'overview', label: 'Overview' },
+            { id: 'transactions', label: `Ledger (${monthTransactions.length})` },
+            { id: 'budgets', label: 'Budgets' },
+            { id: 'wallets', label: `Wallets (${state.finance.wallets.length})` },
           ]}
         />
       </div>
@@ -281,24 +277,24 @@ export const FinancePage: React.FC = () => {
       <form className="card quick-add-bar" onSubmit={handleQuickAddExpense}>
         <input
           className="input"
-          style={{ width: 150 }}
-          placeholder="Số tiền (50k, 1.2tr)"
+          style={{ width: 145 }}
+          placeholder="Amount (50k, 1.2m)"
           value={quickAmount}
           onChange={(e) => setQuickAmount(e.target.value)}
         />
         <input
           className="input"
           style={{ flex: 1, minWidth: 160 }}
-          placeholder="Nội dung chi tiêu nhanh (VD: Cơm trưa, Cafe, Whey)..."
+          placeholder="Quick expense note (e.g., Lunch, Coffee, Whey)..."
           value={quickNote}
           onChange={(e) => setQuickNote(e.target.value)}
         />
         <select
           className="select"
-          style={{ width: 165 }}
+          style={{ width: 160 }}
           value={quickCat}
           onChange={(e) => setQuickCat(e.target.value)}
-          aria-label="Danh mục chi"
+          aria-label="Expense category"
         >
           {expenseCategories.map((c) => (
             <option key={c.id} value={c.id}>
@@ -308,10 +304,10 @@ export const FinancePage: React.FC = () => {
         </select>
         <select
           className="select"
-          style={{ width: 155 }}
+          style={{ width: 145 }}
           value={quickWallet}
           onChange={(e) => setQuickWallet(e.target.value)}
-          aria-label="Chọn ví"
+          aria-label="Wallet"
         >
           {state.finance.wallets.map((w) => (
             <option key={w.id} value={w.id}>
@@ -321,7 +317,7 @@ export const FinancePage: React.FC = () => {
         </select>
         <button type="submit" className="btn btn--primary">
           <IconPlus size={15} />
-          Ghi nhanh
+          Quick log
         </button>
       </form>
 
@@ -330,7 +326,7 @@ export const FinancePage: React.FC = () => {
           <>
             <div className="kpi-grid">
               <div className="card kpi-card tone-tile--sky fin-anim">
-                <div className="kpi-card__label">Tổng số dư tất cả ví</div>
+                <div className="kpi-card__label">Total balance</div>
                 <div className="kpi-card__value">
                   {formatMoneyCompact(monthStats.totalBalance, currency)}
                 </div>
@@ -340,7 +336,7 @@ export const FinancePage: React.FC = () => {
               </div>
 
               <div className="card kpi-card tone-tile--coral fin-anim">
-                <div className="kpi-card__label">Chi tiêu {formatMonthShortVi(monthKey)}</div>
+                <div className="kpi-card__label">Spent ({formatMonthShort(monthKey)})</div>
                 <div className="kpi-card__value">
                   {formatMoneyCompact(monthStats.expense, currency)}
                 </div>
@@ -350,7 +346,7 @@ export const FinancePage: React.FC = () => {
               </div>
 
               <div className="card kpi-card tone-tile--lime fin-anim">
-                <div className="kpi-card__label">Thu nhập {formatMonthShortVi(monthKey)}</div>
+                <div className="kpi-card__label">Income ({formatMonthShort(monthKey)})</div>
                 <div className="kpi-card__value">
                   {formatMoneyCompact(monthStats.income, currency)}
                 </div>
@@ -360,7 +356,7 @@ export const FinancePage: React.FC = () => {
               </div>
 
               <div className="card kpi-card fin-anim">
-                <div className="kpi-card__label">Dòng tiền ròng</div>
+                <div className="kpi-card__label">Net cashflow</div>
                 <div
                   className="kpi-card__value"
                   style={{ color: monthStats.net >= 0 ? 'var(--good)' : 'var(--bad)' }}
@@ -371,8 +367,8 @@ export const FinancePage: React.FC = () => {
                 <div className="kpi-card__meta">
                   <span>
                     {monthStats.income > 0
-                      ? `Tỷ lệ tích lũy ${monthStats.savingsRate}%`
-                      : 'Chưa ghi thu nhập tháng này'}
+                      ? `${monthStats.savingsRate}% savings rate`
+                      : 'No income logged yet'}
                   </span>
                 </div>
               </div>
@@ -383,21 +379,21 @@ export const FinancePage: React.FC = () => {
               <div className="card col-7 fin-anim">
                 <div className="card__head">
                   <div>
-                    <h2 className="card__title">Xu hướng Thu — Chi 6 tháng</h2>
+                    <h2 className="card__title">6-Month Cashflow</h2>
                     <p className="card__sub">
                       {hoverMonthIdx !== null
-                        ? `${sixMonthSeries[hoverMonthIdx].fullLabel}: Thu ${formatMoney(sixMonthSeries[hoverMonthIdx].income, currency)} · Chi ${formatMoney(sixMonthSeries[hoverMonthIdx].expense, currency)}`
-                        : 'Di chuột lên từng cột để xem chi tiết'}
+                        ? `${sixMonthSeries[hoverMonthIdx].fullLabel}: In ${formatMoney(sixMonthSeries[hoverMonthIdx].income, currency)} · Out ${formatMoney(sixMonthSeries[hoverMonthIdx].expense, currency)}`
+                        : 'Hover or click any month to inspect'}
                     </p>
                   </div>
                   <div className="chart-legend">
                     <span className="legend-item">
                       <span className="legend-swatch" style={{ background: 'var(--accent)' }} />
-                      Thu nhập
+                      Income
                     </span>
                     <span className="legend-item">
                       <span className="legend-swatch" style={{ background: 'var(--coral)' }} />
-                      Chi tiêu
+                      Expense
                     </span>
                   </div>
                 </div>
@@ -419,12 +415,12 @@ export const FinancePage: React.FC = () => {
                           <div
                             className="dual-chart__bar dual-chart__bar--in"
                             style={{ height: `${pt.income > 0 ? incH : 2}%` }}
-                            title={`Thu: ${formatMoney(pt.income, currency)}`}
+                            title={`Income: ${formatMoney(pt.income, currency)}`}
                           />
                           <div
                             className="dual-chart__bar dual-chart__bar--out"
                             style={{ height: `${pt.expense > 0 ? expH : 2}%` }}
-                            title={`Chi: ${formatMoney(pt.expense, currency)}`}
+                            title={`Expense: ${formatMoney(pt.expense, currency)}`}
                           />
                         </div>
                         <div className="dual-chart__label">{pt.label}</div>
@@ -438,21 +434,21 @@ export const FinancePage: React.FC = () => {
               <div className="card col-5 fin-anim">
                 <div className="card__head">
                   <div>
-                    <h2 className="card__title">Cơ cấu chi tiêu</h2>
-                    <p className="card__sub">Theo danh mục trong {formatMonthLabelVi(monthKey)}</p>
+                    <h2 className="card__title">Spending breakdown</h2>
+                    <p className="card__sub">By category in {formatMonthLabel(monthKey)}</p>
                   </div>
                   <button
                     type="button"
                     className="card__link"
                     onClick={() => navigate('finance', 'budgets')}
                   >
-                    Ngân sách <IconChevronRight size={14} />
+                    Budgets <IconChevronRight size={14} />
                   </button>
                 </div>
 
                 {monthStats.breakdown.length === 0 ? (
                   <div className="empty-state" style={{ padding: '32px 12px' }}>
-                    Chưa có khoản chi nào trong tháng này.
+                    No expenses logged this month.
                   </div>
                 ) : (
                   <div className="stack-list">
@@ -501,28 +497,28 @@ export const FinancePage: React.FC = () => {
           <div className="card fin-anim">
             <div className="card__head" style={{ flexWrap: 'wrap' }}>
               <div>
-                <h2 className="card__title">Sổ giao dịch ({filteredTx.length})</h2>
-                <p className="card__sub">Nhấn vào bất kỳ giao dịch nào để sửa hoặc xóa</p>
+                <h2 className="card__title">Transactions ({filteredTx.length})</h2>
+                <p className="card__sub">Click any row to edit or delete</p>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <select
                   className="select"
-                  style={{ height: 34, width: 120, padding: '0 10px', fontSize: 12.5 }}
+                  style={{ height: 34, width: 115, padding: '0 10px', fontSize: 12.5 }}
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value as TxType | 'all')}
                 >
-                  <option value="all">Mọi loại</option>
-                  <option value="expense">Chi tiêu</option>
-                  <option value="income">Thu nhập</option>
-                  <option value="transfer">Chuyển ví</option>
+                  <option value="all">All types</option>
+                  <option value="expense">Expense</option>
+                  <option value="income">Income</option>
+                  <option value="transfer">Transfer</option>
                 </select>
                 <select
                   className="select"
-                  style={{ height: 34, width: 150, padding: '0 10px', fontSize: 12.5 }}
+                  style={{ height: 34, width: 140, padding: '0 10px', fontSize: 12.5 }}
                   value={filterWallet}
                   onChange={(e) => setFilterWallet(e.target.value)}
                 >
-                  <option value="all">Tất cả ví</option>
+                  <option value="all">All wallets</option>
                   {state.finance.wallets.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name}
@@ -531,11 +527,11 @@ export const FinancePage: React.FC = () => {
                 </select>
                 <select
                   className="select"
-                  style={{ height: 34, width: 155, padding: '0 10px', fontSize: 12.5 }}
+                  style={{ height: 34, width: 145, padding: '0 10px', fontSize: 12.5 }}
                   value={filterCat}
                   onChange={(e) => setFilterCat(e.target.value)}
                 >
-                  <option value="all">Mọi danh mục</option>
+                  <option value="all">All categories</option>
                   {state.finance.categories.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -545,7 +541,7 @@ export const FinancePage: React.FC = () => {
                 <div className="inline-search">
                   <IconSearch size={14} />
                   <input
-                    placeholder="Tìm ghi chú..."
+                    placeholder="Search notes..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
@@ -564,7 +560,7 @@ export const FinancePage: React.FC = () => {
 
             {filteredTx.length === 0 ? (
               <div className="empty-state" style={{ padding: '36px 12px' }}>
-                Không có giao dịch nào trong {formatMonthLabelVi(monthKey)} khớp bộ lọc.
+                No transactions in {formatMonthLabel(monthKey)} match your filters.
               </div>
             ) : (
               <div className="stack-list">
@@ -597,13 +593,13 @@ export const FinancePage: React.FC = () => {
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div className="tx-mini-row__title">
-                          {tx.note || cat?.name || 'Giao dịch'}
+                          {tx.note || cat?.name || 'Transaction'}
                         </div>
                         <div className="tx-mini-row__sub">
                           {tx.type === 'transfer'
                             ? `${wFrom?.name || ''} → ${wTo?.name || ''}`
                             : `${cat?.name || ''} · ${wFrom?.name || ''}`}{' '}
-                          · {formatShortDateVi(tx.date)}
+                          · {formatShortDate(tx.date)}
                         </div>
                       </div>
                       <div
@@ -630,9 +626,9 @@ export const FinancePage: React.FC = () => {
           <div className="card fin-anim">
             <div className="card__head">
               <div>
-                <h2 className="card__title">Ngân sách tháng ({formatMonthLabelVi(monthKey)})</h2>
+                <h2 className="card__title">Monthly Budgets ({formatMonthLabel(monthKey)})</h2>
                 <p className="card__sub">
-                  Đặt hạn mức chi tiêu theo từng danh mục — cảnh báo khi vượt 80% và 100%
+                  Set spending caps per category — highlights at 80% and 100%
                 </p>
               </div>
             </div>
@@ -648,7 +644,9 @@ export const FinancePage: React.FC = () => {
                 return (
                   <div key={cat.id} className="budget-card">
                     <div className="budget-card__head">
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 700 }}>
+                      <span
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 700 }}
+                      >
                         <span className={`stage-dot stage-dot--${cat.tone}`} />
                         {cat.name}
                       </span>
@@ -667,7 +665,7 @@ export const FinancePage: React.FC = () => {
                       {formatMoney(spent, currency)}
                       <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--muted)' }}>
                         {' '}
-                        / {limit > 0 ? formatMoney(limit, currency) : 'Chưa đặt hạn mức'}
+                        / {limit > 0 ? formatMoney(limit, currency) : 'No limit'}
                       </span>
                     </div>
 
@@ -699,12 +697,16 @@ export const FinancePage: React.FC = () => {
                           className="input"
                           autoFocus
                           style={{ height: 34, fontSize: 13 }}
-                          placeholder="VD: 3tr, 500k (0 để xóa)"
+                          placeholder="e.g., 3m, 500k (0 to remove)"
                           value={budgetDraft}
                           onChange={(e) => setBudgetDraft(e.target.value)}
                         />
-                        <button type="submit" className="btn btn--primary" style={{ height: 34, padding: '0 12px' }}>
-                          Lưu
+                        <button
+                          type="submit"
+                          className="btn btn--primary"
+                          style={{ height: 34, padding: '0 12px' }}
+                        >
+                          Save
                         </button>
                       </form>
                     ) : (
@@ -717,7 +719,7 @@ export const FinancePage: React.FC = () => {
                           setBudgetDraft(limit > 0 ? String(limit) : '');
                         }}
                       >
-                        {limit > 0 ? 'Sửa hạn mức' : '+ Đặt hạn mức'}
+                        {limit > 0 ? 'Edit limit' : '+ Set budget'}
                       </button>
                     )}
                   </div>
@@ -729,9 +731,17 @@ export const FinancePage: React.FC = () => {
 
         {tab === 'wallets' && (
           <div className="stack-list" style={{ gap: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 10,
+              }}
+            >
               <div style={{ fontSize: 14, color: 'var(--muted)' }}>
-                Tổng tài sản trên {state.finance.wallets.length} ví:{' '}
+                Combined balance across {state.finance.wallets.length} wallets:{' '}
                 <strong style={{ color: 'var(--text)' }}>
                   {formatMoney(monthStats.totalBalance, currency)}
                 </strong>
@@ -743,7 +753,7 @@ export const FinancePage: React.FC = () => {
                   onClick={() => openModal({ kind: 'new-tx', defaultType: 'transfer' })}
                 >
                   <IconRepeat size={15} />
-                  Chuyển tiền giữa ví
+                  Transfer
                 </button>
                 <button
                   type="button"
@@ -751,7 +761,7 @@ export const FinancePage: React.FC = () => {
                   onClick={() => openModal({ kind: 'new-wallet' })}
                 >
                   <IconPlus size={15} />
-                  Thêm ví mới
+                  Add wallet
                 </button>
               </div>
             </div>
@@ -784,7 +794,7 @@ export const FinancePage: React.FC = () => {
                           type="button"
                           className="icon-btn"
                           style={{ width: 30, height: 30 }}
-                          aria-label={`Xóa ví ${w.name}`}
+                          aria-label={`Delete ${w.name}`}
                           onClick={() => deleteWallet(w.id)}
                         >
                           <IconTrash size={14} />
@@ -792,11 +802,18 @@ export const FinancePage: React.FC = () => {
                       )}
                     </div>
 
-                    <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em', margin: '6px 0' }}>
+                    <div
+                      style={{
+                        fontSize: 28,
+                        fontWeight: 700,
+                        letterSpacing: '-0.02em',
+                        margin: '6px 0',
+                      }}
+                    >
                       {formatMoney(bal, currency)}
                     </div>
                     <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 14 }}>
-                      {w.note || `${txCount} giao dịch đã ghi nhận`}
+                      {w.note || `${txCount} transactions logged`}
                     </div>
 
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -808,7 +825,7 @@ export const FinancePage: React.FC = () => {
                           openModal({ kind: 'new-tx', defaultType: 'expense', defaultWalletId: w.id })
                         }
                       >
-                        - Ghi chi
+                        - Expense
                       </button>
                       <button
                         type="button"
@@ -818,7 +835,7 @@ export const FinancePage: React.FC = () => {
                           openModal({ kind: 'new-tx', defaultType: 'income', defaultWalletId: w.id })
                         }
                       >
-                        + Ghi thu
+                        + Income
                       </button>
                     </div>
                   </div>

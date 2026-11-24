@@ -52,6 +52,25 @@ startNativeKeyboard()
 // The daily-form check-in feeds the automatic deload suggestion (lib/deload-cycle.js).
 registerDailyFormSource()
 
+// One-time switch to English for browsers previously initialized in Vietnamese
+try {
+  if (!localStorage.getItem('gym_lang_en_v1')) {
+    const st = useStore.getState()
+    if (st?.S?.lang === 'vi' && typeof st.set === 'function') {
+      st.set('lang', 'en')
+    }
+    const raw = localStorage.getItem('gym_state_v1')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed && parsed.lang === 'vi') {
+        parsed.lang = 'en'
+        localStorage.setItem('gym_state_v1', JSON.stringify(parsed))
+      }
+    }
+    localStorage.setItem('gym_lang_en_v1', '1')
+  }
+} catch {}
+
 // Personal Hub bridge: sync theme, notify parent hub of state changes, accept deep-link navigation
 const IS_EMBEDDED = (() => {
   try { return window.self !== window.top } catch { return true }

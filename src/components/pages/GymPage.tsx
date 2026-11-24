@@ -4,16 +4,16 @@ import { assetUrl } from '../../utils/assets';
 import { IconExternal, IconFlame } from '../Icons';
 
 const GYM_QUICK_VIEWS = [
-  { id: 'home', label: 'Trang chủ', hash: '#/home' },
-  { id: 'plan', label: 'Lịch tập', hash: '#/plan' },
-  { id: 'workout', label: 'Đang tập', hash: '#/workout' },
-  { id: 'library', label: '5.6K Bài tập', hash: '#/library' },
-  { id: 'muscles', label: 'Bản đồ cơ', hash: '#/muscles' },
-  { id: 'stats', label: 'Thống kê', hash: '#/stats' },
-  { id: 'measurements', label: 'Số đo', hash: '#/measurements' },
-  { id: 'history', label: 'Lịch sử', hash: '#/history' },
-  { id: 'tools', label: 'Công cụ', hash: '#/tools' },
-  { id: 'settings', label: 'Cài đặt Gym', hash: '#/settings' },
+  { id: 'home', label: 'Home', hash: '#/home' },
+  { id: 'plan', label: 'Plan', hash: '#/plan' },
+  { id: 'workout', label: 'Workout', hash: '#/workout' },
+  { id: 'library', label: 'Exercises', hash: '#/library' },
+  { id: 'muscles', label: 'Muscles', hash: '#/muscles' },
+  { id: 'stats', label: 'Stats', hash: '#/stats' },
+  { id: 'measurements', label: 'Body', hash: '#/measurements' },
+  { id: 'history', label: 'History', hash: '#/history' },
+  { id: 'tools', label: 'Tools', hash: '#/tools' },
+  { id: 'settings', label: 'Gym Settings', hash: '#/settings' },
 ];
 
 export const GymWorkspace: React.FC<{ active: boolean }> = ({ active }) => {
@@ -22,7 +22,6 @@ export const GymWorkspace: React.FC<{ active: boolean }> = ({ active }) => {
   const [activeTab, setActiveTab] = useState('home');
   const [loaded, setLoaded] = useState(false);
 
-  // Build iframe URL once from initial hash target so switching hub tabs NEVER reloads openGym
   const initialSrcRef = useRef<string>('');
   if (!initialSrcRef.current) {
     initialSrcRef.current = `${assetUrl('/opengym/index.html')}${gymHashTarget || '#/home'}`;
@@ -65,7 +64,7 @@ export const GymWorkspace: React.FC<{ active: boolean }> = ({ active }) => {
       aria-hidden={!active}
     >
       <div className="gym-toolbar">
-        <div className="gym-toolbar__tabs" role="tablist" aria-label="Điều hướng nhanh openGym">
+        <div className="gym-toolbar__tabs" role="tablist" aria-label="openGym quick navigation">
           {GYM_QUICK_VIEWS.map((tab) => (
             <button
               key={tab.id}
@@ -88,7 +87,7 @@ export const GymWorkspace: React.FC<{ active: boolean }> = ({ active }) => {
           {gym.available && (
             <span className="pill pill--muted" style={{ fontSize: 11.5 }}>
               <IconFlame size={13} />
-              {gym.workoutsThisWeek}/{gym.weekTarget} tuần này
+              {gym.workoutsThisWeek}/{gym.weekTarget} this week
             </span>
           )}
           <a
@@ -97,10 +96,10 @@ export const GymWorkspace: React.FC<{ active: boolean }> = ({ active }) => {
             rel="noopener noreferrer"
             className="btn btn--ghost"
             style={{ height: 32, padding: '0 12px', fontSize: 12.5 }}
-            title="Mở openGym trong tab riêng toàn màn hình"
+            title="Open openGym full-screen in a new tab"
           >
             <IconExternal size={14} />
-            Toàn màn hình
+            Full screen
           </a>
         </div>
       </div>
@@ -109,13 +108,13 @@ export const GymWorkspace: React.FC<{ active: boolean }> = ({ active }) => {
         {!loaded && (
           <div className="gym-loading">
             <div className="gym-loading__dot" />
-            <span>Đang khởi chạy openGym (5.600+ bài tập)...</span>
+            <span>Loading openGym (5,600+ exercises)...</span>
           </div>
         )}
         <iframe
           ref={iframeRef}
           src={initialSrcRef.current}
-          title="openGym — Theo dõi tập luyện"
+          title="openGym — Workout Tracker"
           className="gym-iframe"
           onLoad={handleLoad}
           allow="fullscreen; wake-lock; vibrate"

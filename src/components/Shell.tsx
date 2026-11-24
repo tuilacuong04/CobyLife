@@ -36,12 +36,12 @@ import {
 } from './Icons';
 
 const PAGE_LABELS: Record<PageId, string> = {
-  overview: 'Tổng quan',
+  overview: 'Overview',
   gym: 'Gym · openGym',
-  tasks: 'Task cá nhân',
-  finance: 'Quản lí chi tiêu',
-  modules: 'Mở rộng module',
-  settings: 'Cài đặt',
+  tasks: 'Tasks',
+  finance: 'Finance',
+  modules: 'Modules',
+  settings: 'Settings',
 };
 
 const MODULE_IDS: ModuleId[] = ['gym', 'tasks', 'finance'];
@@ -532,11 +532,11 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   ).length;
 
   const navMeta: { id: PageId; label: string; badge?: number }[] = [
-    { id: 'overview', label: 'Tổng quan' },
+    { id: 'overview', label: 'Overview' },
     { id: 'gym', label: 'Gym (openGym)', badge: gym.activeWorkout ? 1 : undefined },
-    { id: 'tasks', label: 'Task cá nhân', badge: pendingTasksToday || openTasksCount || undefined },
-    { id: 'finance', label: 'Quản lí chi tiêu', badge: txThisMonth || undefined },
-    { id: 'modules', label: 'Mở rộng', badge: state.futureModules.length || undefined },
+    { id: 'tasks', label: 'Tasks', badge: pendingTasksToday || openTasksCount || undefined },
+    { id: 'finance', label: 'Finance', badge: txThisMonth || undefined },
+    { id: 'modules', label: 'Modules', badge: state.futureModules.length || undefined },
   ];
 
   const activeModuleIdx = MODULE_IDS.indexOf(route.page as ModuleId);
@@ -574,7 +574,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     a.click();
     URL.revokeObjectURL(url);
     setOpenPopover(null);
-    pushToast('Đã tải xuống file sao lưu toàn bộ (openGym + Tasks + Chi tiêu)');
+    pushToast('Exported full backup (openGym + Tasks + Finance)');
   };
 
   const isGymFullBleed = route.page === 'gym';
@@ -639,15 +639,15 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         />
 
         {/* Collapsed Floating Dock */}
-        <aside ref={dockRef} className="dock" aria-label="Điều hướng nhanh">
+        <aside ref={dockRef} className="dock" aria-label="Quick navigation">
           <button
             type="button"
             className="dock__btn"
-            aria-label="Mở thanh bên"
+            aria-label="Expand sidebar"
             onClick={() => setSidebarOpen(true)}
             onMouseEnter={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
-              setDockTip({ label: 'Mở rộng menu', x: r.right + 12, y: r.top + r.height / 2 });
+              setDockTip({ label: 'Expand sidebar', x: r.right + 12, y: r.top + r.height / 2 });
             }}
             onMouseLeave={() => setDockTip(null)}
           >
@@ -690,11 +690,11 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           <button
             type="button"
             className={`dock__btn ${route.page === 'settings' ? 'is-active' : ''}`}
-            aria-label="Cài đặt"
+            aria-label="Settings"
             onClick={() => handleNav('settings')}
             onMouseEnter={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
-              setDockTip({ label: 'Cài đặt', x: r.right + 12, y: r.top + r.height / 2 });
+              setDockTip({ label: 'Settings', x: r.right + 12, y: r.top + r.height / 2 });
             }}
             onMouseLeave={() => setDockTip(null)}
           >
@@ -710,12 +710,12 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           <button
             type="button"
             className="dock__btn"
-            aria-label={theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             onClick={toggleTheme}
             onMouseEnter={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
               setDockTip({
-                label: theme === 'dark' ? 'Chế độ sáng' : 'Chế độ tối',
+                label: theme === 'dark' ? 'Light mode' : 'Dark mode',
                 x: r.right + 12,
                 y: r.top + r.height / 2,
               });
@@ -732,7 +732,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         </aside>
 
         {/* Expanded Sidebar */}
-        <aside ref={sideRef} className="side" aria-label="Menu chính">
+        <aside ref={sideRef} className="side" aria-label="Main navigation">
           <div ref={sideBgRef} className="side__bg" aria-hidden="true" />
           <div className="side__content">
             <div
@@ -757,7 +757,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
               <button
                 type="button"
                 className="side__toggle"
-                aria-label="Thu gọn menu"
+                aria-label="Collapse sidebar"
                 onClick={() => setSidebarOpen(false)}
               >
                 <IconSidebarToggle size={17} />
@@ -770,7 +770,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
               }}
               className="side__label"
             >
-              Modules cá nhân
+              Modules
             </div>
 
             {APP_MODULES.map((mod, i) => {
@@ -810,7 +810,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
               className="side__label"
               style={{ marginTop: 12 }}
             >
-              Điều hướng
+              Menu
             </div>
 
             {navMeta.map((item, j) => {
@@ -860,7 +860,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                 >
                   {!isDesk && <IconSettings />}
                 </span>
-                <span className="nav-row__label">Cài đặt</span>
+                <span className="nav-row__label">Settings</span>
               </button>
 
               <button
@@ -880,7 +880,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                   {!isDesk && (theme === 'dark' ? <IconSun /> : <IconMoon />)}
                 </span>
                 <span className="nav-row__label">
-                  {theme === 'dark' ? 'Giao diện sáng' : 'Giao diện tối'}
+                  {theme === 'dark' ? 'Light theme' : 'Dark theme'}
                 </span>
               </button>
 
@@ -896,7 +896,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                 <RepAvatar src={profile.avatar} name={profile.name} size={36} />
                 <div className="side__profile-text">
                   <div className="side__profile-name">{profile.name}</div>
-                  <div className="side__profile-role">Không gian cá nhân</div>
+                  <div className="side__profile-role">Personal OS</div>
                 </div>
               </div>
             </div>
@@ -910,7 +910,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
               <button
                 type="button"
                 className="burger"
-                aria-label="Mở menu"
+                aria-label="Open menu"
                 onClick={() => setSidebarOpen(true)}
               >
                 <IconMenu size={20} />
@@ -920,7 +920,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                 ref={stackRef}
                 type="button"
                 className="stack"
-                aria-label="Chuyển nhanh module"
+                aria-label="Switch module"
                 onClick={() => setOpenPopover(openPopover === 'modules' ? null : 'modules')}
               >
                 {APP_MODULES.map((mod, i) => (
@@ -942,7 +942,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                 onClose={() => setOpenPopover(null)}
               >
                 <div className="popover__head">
-                  <span>Chuyển nhanh module</span>
+                  <span>Switch module</span>
                   <button
                     type="button"
                     className="popover__action"
@@ -951,7 +951,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                       handleNav('modules');
                     }}
                   >
-                    Mở rộng
+                    Manage
                   </button>
                 </div>
                 {APP_MODULES.map((mod) => (
@@ -995,7 +995,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                 onClick={() => openModal({ kind: 'search' })}
               >
                 <IconSearch size={15} />
-                <span className="search-btn__text">Tìm nhanh...</span>
+                <span className="search-btn__text">Search...</span>
                 <kbd className="kbd">⌘K</kbd>
               </button>
 
@@ -1006,7 +1006,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                   onClick={() => setOpenPopover(openPopover === 'new' ? null : 'new')}
                 >
                   <IconPlus size={15} />
-                  <span>Tạo mới</span>
+                  <span>New</span>
                 </MagneticButton>
               </div>
 
@@ -1029,8 +1029,8 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                     <IconTasks size={15} />
                   </span>
                   <span className="pop-item__text">
-                    <span className="pop-item__title">Task cá nhân mới</span>
-                    <span className="pop-item__sub">Thêm việc cần làm & hạn chót</span>
+                    <span className="pop-item__title">New task</span>
+                    <span className="pop-item__sub">Add a personal to-do & due date</span>
                   </span>
                 </button>
                 <button
@@ -1045,8 +1045,8 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                     <IconWallet size={15} />
                   </span>
                   <span className="pop-item__text">
-                    <span className="pop-item__title">Ghi chi tiêu mới</span>
-                    <span className="pop-item__sub">Nhập nhanh (VD: 50k, 1.2tr)</span>
+                    <span className="pop-item__title">Log expense</span>
+                    <span className="pop-item__sub">Quick input (e.g. 50k, 1.2m)</span>
                   </span>
                 </button>
                 <button
@@ -1061,8 +1061,8 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                     <IconPlus size={15} />
                   </span>
                   <span className="pop-item__text">
-                    <span className="pop-item__title">Ghi thu nhập mới</span>
-                    <span className="pop-item__sub">Cộng tiền vào ví / ngân hàng</span>
+                    <span className="pop-item__title">Log income</span>
+                    <span className="pop-item__sub">Add funds to a wallet</span>
                   </span>
                 </button>
                 <button
@@ -1077,8 +1077,8 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                     <IconDumbbell size={15} />
                   </span>
                   <span className="pop-item__text">
-                    <span className="pop-item__title">Bắt đầu tập Gym</span>
-                    <span className="pop-item__sub">Mở ngay openGym tracker</span>
+                    <span className="pop-item__title">Start workout</span>
+                    <span className="pop-item__sub">Jump straight into openGym</span>
                   </span>
                 </button>
               </AnimatedPopover>
@@ -1087,8 +1087,8 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                 <button
                   type="button"
                   className="icon-btn"
-                  aria-label="Khóa màn hình"
-                  title="Khóa màn hình bằng PIN"
+                  aria-label="Lock workspace"
+                  title="Lock with PIN"
                   onClick={lockApp}
                 >
                   <IconLock size={17} />
@@ -1099,7 +1099,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                 ref={avatarBtnRef}
                 type="button"
                 className="avatar-btn"
-                aria-label="Tài khoản cá nhân"
+                aria-label="Personal account"
                 onClick={() => setOpenPopover(openPopover === 'account' ? null : 'account')}
               >
                 <RepAvatar src={profile.avatar} name={profile.name} size={40} />
@@ -1125,14 +1125,14 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                   }}
                 >
                   <span className="pop-item__text">
-                    <span className="pop-item__title">Cài đặt cá nhân</span>
-                    <span className="pop-item__sub">Hồ sơ, tiền tệ, mã PIN</span>
+                    <span className="pop-item__title">Settings</span>
+                    <span className="pop-item__sub">Profile, currency, PIN lock</span>
                   </span>
                 </button>
                 <button type="button" className="pop-item" onClick={handleQuickExport}>
                   <span className="pop-item__text">
-                    <span className="pop-item__title">Sao lưu toàn bộ (JSON)</span>
-                    <span className="pop-item__sub">openGym + Tasks + Chi tiêu</span>
+                    <span className="pop-item__title">Export full backup (JSON)</span>
+                    <span className="pop-item__sub">openGym + Tasks + Finance</span>
                   </span>
                 </button>
                 <button
@@ -1145,9 +1145,9 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                 >
                   <span className="pop-item__text">
                     <span className="pop-item__title">
-                      {theme === 'dark' ? 'Chuyển giao diện sáng' : 'Chuyển giao diện tối'}
+                      {theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
                     </span>
-                    <span className="pop-item__sub">Đồng bộ cả openGym</span>
+                    <span className="pop-item__sub">Syncs with openGym</span>
                   </span>
                 </button>
                 {pinEnabled && (
@@ -1161,7 +1161,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                   >
                     <span className="pop-item__text">
                       <span className="pop-item__title" style={{ color: 'var(--bad)' }}>
-                        Khóa màn hình ngay
+                        Lock workspace
                       </span>
                     </span>
                   </button>

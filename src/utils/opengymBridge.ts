@@ -158,7 +158,7 @@ export function readOpenGymSnapshot(): OpenGymSnapshot {
     const latest = sortedWorkouts[0];
     const lastWorkout = latest
       ? {
-          name: latest.name || 'Buổi tập',
+          name: latest.name || 'Workout',
           date: latest.d || todayIso,
           vol: typeof latest.vol === 'number' ? latest.vol : 0,
           durationMin:
@@ -188,7 +188,7 @@ export function readOpenGymSnapshot(): OpenGymSnapshot {
 
     const activeWorkout = parsed.active
       ? {
-          name: parsed.active.name || 'Đang tập luyện',
+          name: parsed.active.name || 'Active workout',
           startedAt: parsed.active.start || parsed.active.startedAt || Date.now(),
         }
       : null;
