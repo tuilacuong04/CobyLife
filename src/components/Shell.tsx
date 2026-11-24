@@ -97,6 +97,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const mainRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sideRef = useRef<HTMLElement>(null);
+  const sideScrollRef = useRef<HTMLDivElement>(null);
   const sideBgRef = useRef<HTMLDivElement>(null);
   const scrimRef = useRef<HTMLDivElement>(null);
   const dockRef = useRef<HTMLElement>(null);
@@ -132,15 +133,15 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   isDeskRef.current = isDesk;
 
   const measureSlots = useCallback(() => {
-    const sideEl = sideRef.current;
+    const sideScrollEl = sideScrollRef.current;
     const mainEl = mainRef.current;
     const stackEl = stackRef.current;
     const desk = isDeskRef.current;
     const o = springRef.current.value;
 
-    const sideTx = !desk ? (o - 1) * 316 : 0;
-    const sideScrollTop = sideEl ? sideEl.scrollTop : 0;
-    const mainRectLeft = mainEl ? mainEl.getBoundingClientRect().left : 96;
+    const sideTx = !desk ? (o - 1) * 340 : 0;
+    const sideScrollTop = sideScrollEl ? sideScrollEl.scrollTop : 0;
+    const mainRectLeft = mainEl ? mainEl.getBoundingClientRect().left : desk ? 96 : 0;
 
     const sideSlots: (SlotPos | null)[] = [];
     const collapsedSlots: (SlotPos | null)[] = [];
@@ -220,6 +221,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         if (pheadActs) pheadActs.style.transform = invTx;
       } else {
         mainEl.style.transform = '';
+        mainLeftLive = mainEl.getBoundingClientRect().left;
         if (topRightEl) topRightEl.style.transform = '';
         const pheadActs = mainEl.querySelector<HTMLElement>('.phead__actions');
         if (pheadActs) pheadActs.style.transform = '';
@@ -236,7 +238,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       } else {
         sideBg.style.opacity = '1';
         sideBg.style.transform = '';
-        sideEl.style.transform = `translate3d(${((o - 1) * 316).toFixed(2)}px, 0, 0)`;
+        sideEl.style.transform = `translate3d(${((o - 1) * 340).toFixed(2)}px, 0, 0)`;
       }
     }
     if (scrimEl) {
@@ -256,10 +258,10 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     if (dockEl) {
       dockEl.style.opacity = desk ? String(clamp01(1 - o * 2.2)) : '0';
     }
+    const stackFade = clamp01(1 - o * 2.2);
     if (stackEl) {
-      const fade = clamp01(1 - o * 2.2);
-      stackEl.style.opacity = String(fade);
-      stackEl.style.pointerEvents = fade < 0.08 ? 'none' : '';
+      stackEl.style.opacity = String(stackFade);
+      stackEl.style.pointerEvents = stackFade < 0.08 ? 'none' : '';
     }
     if (crumbEl) {
       if (desk) {
@@ -271,7 +273,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       }
     }
 
-    const sideScrollTop = sideEl ? sideEl.scrollTop : 0;
+    const sideScrollTop = sideScrollRef.current ? sideScrollRef.current.scrollTop : 0;
     const { side: sideSlots, collapsed: colSlots } = slotsRef.current;
 
     for (let i = 0; i < TOTAL_FLYERS; i++) {
@@ -283,10 +285,10 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
       if (!desk) {
         if (i < 3 && cPos) {
-          fEl.style.opacity = '1';
-          fEl.style.transform = `translate3d(${(cPos.x - 20).toFixed(2)}px, ${(cPos.y - 20).toFixed(2)}px, 0) scale(${(cPos.w / 40).toFixed(3)})`;
+          fEl.style.opacity = String(stackFade);
+          fEl.style.transform = `translate3d(${(mainLeftLive + cPos.x - 20).toFixed(2)}px, ${(cPos.y - 20).toFixed(2)}px, 0) scale(${(cPos.w / 40).toFixed(3)})`;
           const ring = flyRingRefs.current[i];
-          if (ring) ring.style.opacity = '1';
+          if (ring) ring.style.opacity = String(stackFade);
         } else {
           fEl.style.opacity = '0';
         }
@@ -495,14 +497,14 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       applyProgress(springRef.current.value);
     });
 
-    const sideEl = sideRef.current;
+    const sideScrollEl = sideScrollRef.current;
     const onSideScroll = () => applyProgress(springRef.current.value);
-    sideEl?.addEventListener('scroll', onSideScroll, { passive: true });
+    sideScrollEl?.addEventListener('scroll', onSideScroll, { passive: true });
 
     return () => {
       mq.removeEventListener('change', onMq);
       ro.disconnect();
-      sideEl?.removeEventListener('scroll', onSideScroll);
+      sideScrollEl?.removeEventListener('scroll', onSideScroll);
       if (tickRef.current) {
         gsap.ticker.remove(tickRef.current);
         tickRef.current = null;
@@ -633,7 +635,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       >
         <div
           ref={scrimRef}
-          className="scrim"
+          className={`scrim ${!isDesk && isOpen ? 'is-active' : ''}`}
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
@@ -734,7 +736,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         {/* Expanded Sidebar */}
         <aside ref={sideRef} className="side" aria-label="Main navigation">
           <div ref={sideBgRef} className="side__bg" aria-hidden="true" />
-          <div className="side__content">
+          <div ref={sideScrollRef} className="side__content">
             <div
               ref={(el) => {
                 sideItemRefs.current[0] = el;
@@ -1002,11 +1004,11 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
               <div ref={newAnchorRef} style={{ position: 'relative' }}>
                 <MagneticButton
                   type="button"
-                  className="btn btn--primary"
+                  className="btn btn--primary top__new-btn"
                   onClick={() => setOpenPopover(openPopover === 'new' ? null : 'new')}
                 >
                   <IconPlus size={15} />
-                  <span>New</span>
+                  <span className="top__new-label">New</span>
                 </MagneticButton>
               </div>
 

@@ -134,23 +134,23 @@
   transition: color 0.25s var(--ease);
 }
 
-.seg .seg__btn.is-active {
+.seg:has(.seg__thumb) .seg__btn.is-active {
   background: transparent;
   color: var(--bg);
 }
 
-/* Permanent Flyers Layer (240 Hz Spring FLIP between dock/stack & sidebar) */
+.seg:not(:has(.seg__thumb)) .seg__btn.is-active {
+  background: var(--text);
+  color: var(--bg);
+}
+
+/* Permanent Flyers Layer (240 Hz Spring FLIP between dock/stack & sidebar).
+   Stays at z-index 30 (above .main at 10, strictly below mobile .scrim at 95 and .side at 98). */
 .flyers {
   position: fixed;
   inset: 0;
   z-index: 30;
   pointer-events: none;
-}
-
-@media (max-width: 820px) {
-  .flyers {
-    z-index: 99;
-  }
 }
 
 .fly {
