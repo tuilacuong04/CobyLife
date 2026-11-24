@@ -121,7 +121,9 @@ export function parseSmartAmount(raw: string): number {
 }
 
 export function formatVolume(vol: number, unit: 'kg' | 'lb' = 'kg'): string {
-  if (vol >= 1000) return `${(vol / 1000).toFixed(1)}t ${unit}`;
+  if (vol >= 1000) {
+    return unit === 'kg' ? `${(vol / 1000).toFixed(1)}t` : `${(vol / 1000).toFixed(1)}k lb`;
+  }
   return `${Math.round(vol).toLocaleString('en-US')} ${unit}`;
 }
 
