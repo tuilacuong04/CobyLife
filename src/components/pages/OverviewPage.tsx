@@ -14,6 +14,13 @@ import {
   TASK_PRIORITY_META,
   WALLET_KIND_LABEL,
 } from '../../utils/format';
+import {
+  currentCycleKey,
+  getCycleRange,
+  getEffectiveExpense,
+  getEffectiveIncome,
+  isTxInCycle,
+} from '../../utils/financeEngine';
 import { useScrollReveal, useStaggerEntrance } from '../../utils/motion';
 import { MagneticButton } from '../Motion';
 import {
@@ -21,8 +28,10 @@ import {
   IconArrowUpRight,
   IconCheck,
   IconChevronRight,
+  IconMail,
   IconModuleGlyph,
   IconPlus,
+  IconRepeat,
   IconWallet,
 } from '../Icons';
 
@@ -43,8 +52,11 @@ export const OverviewPage: React.FC = () => {
   useScrollReveal(bentoRef, '.bento-card', []);
 
   const today = localIsoDate();
-  const thisMonth = currentMonthKey();
+  const paydayDay = state.finance.paydayDay || 1;
+  const cycleKey = currentCycleKey(new Date(), paydayDay);
+  const cycleRange = useMemo(() => getCycleRange(cycleKey, paydayDay), [cycleKey, paydayDay]);
   const { currency, profile } = state.settings;
+  const pendingGmailCount = state.finance.inbox.filter((it) => it.status === 'pending').length;
 
   const tasksToday = useMemo(
     () =>
@@ -68,17 +80,24 @@ export const OverviewPage: React.FC = () => {
 
   const financeMetrics = useMemo(() => {
     let monthExpense = 0;
+    let budgetedExpense = 0;
     let monthIncome = 0;
     let monthTxCount = 0;
+    const budgetSet = new Set(state.finance.budgets.map((b) => b.categoryId));
     const spentByCat: Record<string, number> = {};
     for (const tx of state.finance.transactions) {
-      if (!tx.date.startsWith(thisMonth)) continue;
+      if (!isTxInCycle(tx, cycleRange)) continue;
       monthTxCount++;
-      if (tx.type === 'expense') {
-        monthExpense += tx.amount;
-        spentByCat[tx.categoryId] = (spentByCat[tx.categoryId] || 0) + tx.amount;
-      } else if (tx.type === 'income') {
-        monthIncome += tx.amount;
+      const exp = getEffectiveExpense(tx);
+      const inc = getEffectiveIncome(tx);
+      if (exp > 0) {
+        monthExpense += exp;
+        spentByCat[tx.categoryId] = (spentByCat[tx.categoryId] || 0) + exp;
+        if (budgetSet.has(tx.categoryId)) {
+          budgetedExpense += exp;
+        }
+      } else if (inc > 0) {
+        monthIncome += inc;
       }
     }
     const netMonth = monthIncome - monthExpense;
@@ -86,9 +105,9 @@ export const OverviewPage: React.FC = () => {
       monthIncome > 0 ? Math.max(-99, Math.round((netMonth / monthIncome) * 100)) : 0;
     const totalBalance = Object.values(walletBalances).reduce((sum, v) => sum + v, 0);
     const totalBudget = state.finance.budgets.reduce((sum, b) => sum + b.monthlyLimit, 0);
-    const budgetPct = totalBudget > 0 ? Math.round((monthExpense / totalBudget) * 100) : 0;
+    const budgetPct = totalBudget > 0 ? Math.round((budgetedExpense / totalBudget) * 100) : 0;
     const recent = [...state.finance.transactions]
-      .sort((a, b) => b.date.localeCompare(a.date))
+      .sort((a, b) => (b.timestamp || b.date).localeCompare(a.timestamp || a.date))
       .slice(0, 5);
 
     const catMap = new Map(state.finance.categories.map((c) => [c.id, c]));
@@ -119,7 +138,7 @@ export const OverviewPage: React.FC = () => {
       topBudgets,
       catMap,
     };
-  }, [state.finance, walletBalances, thisMonth]);
+  }, [state.finance, walletBalances, cycleRange]);
 
   return (
     <>
@@ -134,13 +153,23 @@ export const OverviewPage: React.FC = () => {
           </p>
         </div>
         <div className="phead__actions">
+          {pendingGmailCount > 0 && (
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => navigate('finance', 'inbox')}
+            >
+              <IconMail size={15} style={{ color: 'var(--coral)' }} />
+              Inbox ({pendingGmailCount})
+            </button>
+          )}
           <button
             type="button"
             className="btn btn--ghost"
-            onClick={() => openModal({ kind: 'new-tx', defaultType: 'expense' })}
+            onClick={() => openModal({ kind: 'quick-log' })}
           >
             <IconWallet size={15} />
-            Log expense
+            Quick log
           </button>
           <MagneticButton
             type="button"
@@ -389,6 +418,8 @@ export const OverviewPage: React.FC = () => {
                       >
                         {tx.type === 'income' ? (
                           <IconArrowDownLeft size={14} />
+                        ) : tx.type === 'transfer' ? (
+                          <IconRepeat size={13} />
                         ) : (
                           <IconArrowUpRight size={14} />
                         )}

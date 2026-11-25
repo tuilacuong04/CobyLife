@@ -214,6 +214,8 @@ export interface SegOption<T extends string = string> {
   id: T;
   label: string;
   icon?: React.ReactNode;
+  badge?: number;
+  badgeTone?: 'coral' | 'lime' | 'muted';
 }
 
 interface SlidingSegProps<T extends string> {
@@ -221,6 +223,7 @@ interface SlidingSegProps<T extends string> {
   activeId: T;
   onChange: (id: T) => void;
   ariaLabel?: string;
+  className?: string;
 }
 
 export function SlidingSeg<T extends string>({
@@ -228,11 +231,13 @@ export function SlidingSeg<T extends string>({
   activeId,
   onChange,
   ariaLabel,
+  className = '',
 }: SlidingSegProps<T>) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLSpanElement>(null);
   const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const mountedRef = useRef(false);
+  const itemsSig = items.map((i) => `${i.id}:${i.label}:${i.badge ?? ''}`).join('|');
 
   const sync = (animate: boolean) => {
     animateClipPill(thumbRef.current, btnRefs.current[activeId], wrapRef.current, animate, 999);
@@ -246,7 +251,7 @@ export function SlidingSeg<T extends string>({
     }
     mountedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, items.map((i) => `${i.id}:${i.label}`).join('|')]);
+  }, [activeId, itemsSig]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -268,10 +273,10 @@ export function SlidingSeg<T extends string>({
       ro.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId, items.map((i) => `${i.id}:${i.label}`).join('|')]);
+  }, [activeId, itemsSig]);
 
   return (
-    <div className="seg" role="group" aria-label={ariaLabel} ref={wrapRef}>
+    <div className={`seg ${className}`.trim()} role="group" aria-label={ariaLabel} ref={wrapRef}>
       <span className="seg__thumb" ref={thumbRef} aria-hidden="true" />
       {items.map((item) => (
         <button
@@ -289,6 +294,11 @@ export function SlidingSeg<T extends string>({
         >
           {item.icon}
           <span>{item.label}</span>
+          {item.badge !== undefined && item.badge > 0 && (
+            <span className={`seg__badge seg__badge--${item.badgeTone || 'coral'}`}>
+              {item.badge > 99 ? '99+' : item.badge}
+            </span>
+          )}
         </button>
       ))}
     </div>
@@ -572,13 +582,23 @@ export function SlidingSegmented<T extends string>({
   items,
   onChange,
   ariaLabel,
+  className,
 }: {
   value: T;
   items: SegOption<T>[];
   onChange: (id: T) => void;
   ariaLabel?: string;
+  className?: string;
 }) {
-  return <SlidingSeg activeId={value} items={items} onChange={onChange} ariaLabel={ariaLabel} />;
+  return (
+    <SlidingSeg
+      activeId={value}
+      items={items}
+      onChange={onChange}
+      ariaLabel={ariaLabel}
+      className={className}
+    />
+  );
 }
 
 export const AnimatedModal: React.FC<{
@@ -647,10 +667,18 @@ export const AnimatedDrawer: React.FC<{
   useLayoutEffect(() => {
     const el = panelRef.current;
     if (!open || !el || isReducedMotion()) return;
+    const mobile = isMobileViewport();
     const tween = gsap.fromTo(
       el,
-      { x: 44, opacity: 0 },
-      { x: 0, opacity: 1, duration: dur(0.42), ease: 'expo.out', clearProps: 'transform' }
+      mobile ? { y: 56, opacity: 0 } : { x: 44, opacity: 0 },
+      {
+        x: 0,
+        y: 0,
+        opacity: 1,
+        duration: dur(0.4),
+        ease: 'expo.out',
+        clearProps: 'transform',
+      }
     );
     return () => {
       tween.kill();

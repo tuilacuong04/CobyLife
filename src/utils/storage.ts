@@ -1,20 +1,14 @@
 import { PersistedAppState } from '../types';
 import { createStarterState } from '../data/seedData';
+import {
+  DEFAULT_AUTO_RULES,
+  DEFAULT_QUICK_PRESETS,
+  DEFAULT_RECURRING_BILLS,
+} from './financeEngine';
 
 export const APP_STORAGE_KEY = 'coby_life_os_v1';
 const LEGACY_STORAGE_KEY = 'sylva_personal_os_v2';
 export const LOCAL_UPDATED_AT_KEY = 'coby_life_updated_at_v1';
-const LEGACY_GYM_KEYS = ['gym_state_v1', 'gym_demo_seeded_v1', 'gym_lang_en_v1'];
-
-export function purgeLegacyGymStorage(): void {
-  try {
-    for (const key of LEGACY_GYM_KEYS) {
-      window.localStorage.removeItem(key);
-    }
-  } catch {
-    // Ignore
-  }
-}
 
 export function hasStoredAppState(): boolean {
   try {
@@ -47,28 +41,44 @@ export function normalizePersistedState(raw: unknown): PersistedAppState {
   const fallback = createStarterState();
   if (!raw || typeof raw !== 'object') return fallback;
   const parsed = raw as Partial<PersistedAppState>;
-  const hasValidFinance =
-    parsed.finance &&
-    Array.isArray(parsed.finance.wallets) &&
-    Array.isArray(parsed.finance.categories) &&
-    Array.isArray(parsed.finance.transactions) &&
-    Array.isArray(parsed.finance.budgets);
+  const rawFin = parsed.finance;
 
-  const migratedFinance = hasValidFinance
+  const hasValidCoreFinance =
+    rawFin &&
+    Array.isArray(rawFin.wallets) &&
+    Array.isArray(rawFin.categories) &&
+    Array.isArray(rawFin.transactions) &&
+    Array.isArray(rawFin.budgets);
+
+  const normalizedFinance = hasValidCoreFinance
     ? {
-        ...parsed.finance!,
-        categories: parsed.finance!.categories.map((cat) =>
-          cat.id === 'cat-gym' && cat.name === 'Gym & Nutrition'
-            ? { ...cat, name: 'Health & Care', badge: 'HC' }
-            : cat
-        ),
+        wallets: rawFin.wallets,
+        categories: rawFin.categories,
+        transactions: rawFin.transactions,
+        budgets: rawFin.budgets,
+        inbox: Array.isArray(rawFin.inbox) ? rawFin.inbox : [],
+        rules: Array.isArray(rawFin.rules) ? rawFin.rules : DEFAULT_AUTO_RULES,
+        recurringBills: Array.isArray(rawFin.recurringBills)
+          ? rawFin.recurringBills
+          : DEFAULT_RECURRING_BILLS,
+        quickPresets: Array.isArray(rawFin.quickPresets)
+          ? rawFin.quickPresets
+          : DEFAULT_QUICK_PRESETS,
+        paydayDay:
+          typeof rawFin.paydayDay === 'number' && rawFin.paydayDay >= 1 && rawFin.paydayDay <= 28
+            ? Math.round(rawFin.paydayDay)
+            : 1,
+        usdVndRate:
+          typeof rawFin.usdVndRate === 'number' && rawFin.usdVndRate > 1000
+            ? rawFin.usdVndRate
+            : 25500,
       }
     : fallback.finance;
 
   return {
-    version: 2,
+    version: 3,
     tasks: Array.isArray(parsed.tasks) ? parsed.tasks : fallback.tasks,
-    finance: migratedFinance,
+    finance: normalizedFinance,
     futureModules: Array.isArray(parsed.futureModules)
       ? parsed.futureModules
       : fallback.futureModules,
@@ -80,16 +90,14 @@ export function normalizePersistedState(raw: unknown): PersistedAppState {
         ...(parsed.settings?.profile || {}),
       },
       enabledModules: {
-        tasks: parsed.settings?.enabledModules?.tasks ?? fallback.settings.enabledModules.tasks,
-        finance:
-          parsed.settings?.enabledModules?.finance ?? fallback.settings.enabledModules.finance,
+        ...fallback.settings.enabledModules,
+        ...(parsed.settings?.enabledModules || {}),
       },
     },
   };
 }
 
 export function loadAppState(): PersistedAppState {
-  purgeLegacyGymStorage();
   try {
     let raw = window.localStorage.getItem(APP_STORAGE_KEY);
     if (!raw) {
@@ -118,7 +126,6 @@ export function clearAppState(): void {
   try {
     window.localStorage.removeItem(APP_STORAGE_KEY);
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
-    purgeLegacyGymStorage();
   } catch {
     // Ignore
   }

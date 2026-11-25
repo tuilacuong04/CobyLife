@@ -1589,4 +1589,11 @@ body,
   .form-grid {
     grid-template-columns: 1fr;
   }
+  .input,
+  .select,
+  .textarea,
+  .inline-search input,
+  .cmd-input {
+    font-size: 16px !important;
+  }
 }

@@ -17,21 +17,22 @@
 ## 2. Core Modules & Extensible Architecture
 1. **Personal Tasks — `src/components/pages/TasksPage.tsx`**
    - Agenda, drag-and-drop Kanban board (`.deal-card`), and All-list view; 1-line quick-add, subtasks, pinning, priorities, categories, recurring schedules, slide-over/bottom-sheet edit drawer (`src/components/Drawers.tsx`).
-2. **Personal Finance — `src/components/pages/FinancePage.tsx`**
-   - Multi-wallet expense/income/transfer tracker, shorthand amount input (`50k`, `1.2m`, `1.5tr`), VND/USD display, 6-month dual cashflow chart, monthly category budgets (80%/100% alerts), CSV export.
+2. **Personal Finance (v3 Mobile-Web + Gmail Sync) — `src/components/pages/FinancePage.tsx` + `src/components/finance/*`**
+   - **Gmail Auto-Sync & Review Inbox (`GmailInboxView.tsx` + `vnGmailParser.ts`):** 24/7 Google Apps Script (`everyMinutes(5)` cron + CORS-safe `text/plain` `doPost` on-demand Mobile Web `"Sync Gmail"` button) pushing into write-only `public.coby_finance_inbox` on Supabase (zero OAuth popups on Mobile Safari/Chrome).
+   - **Smart PFM Engine (`financeEngine.ts`):** Auto-Rules engine, Self-Transfer deduplication, Merchant E-Receipt enrichment (Grab/Apple/Shopee without double-counting), `Balance-After` Wallet Drift Catcher + 1-click Reconcile, Split/Reimbursable ("Ứng hộ") bill tracking, Custom Payday Cycle (`1–28`) + `Safe to Spend Today` pace bar, Recurring Bills & Subscriptions (`VND`/`USD`), Custom Categories CRUD, and zero-keyboard `000` `QuickLogModal`.
 3. **Extensible Module Registry (`#3+`) — `src/modules/registry.ts` + `src/components/pages/ModulesPage.tsx`**
-   - Plug future modules (e.g., Daily Habits, Second Brain Notes, Recurring Bills, Books) by adding an ID to `src/types.ts`, registering in `src/modules/registry.ts`, and mounting its page in `src/App.tsx` (and updating `MODULE_IDS` / flyer slots in `src/components/Shell.tsx` if surfaced as a top-level core space).
+   - Plug future modules (e.g., Daily Habits, Second Brain Notes, Books) by adding an ID to `src/types.ts`, registering in `src/modules/registry.ts`, and mounting its page in `src/App.tsx` (and updating `MODULE_IDS` / flyer slots in `src/components/Shell.tsx` if surfaced as a top-level core space).
 
 ---
 
 ## 3. Data Persistence & Personal Cloud DB (`src/utils/cloudDb.ts`)
 - **Local Storage + Durable IndexedDB:**
-  - `localStorage['coby_life_os_v1']` (auto-migrates legacy `sylva_personal_os_v2` and cleans up legacy `gym_*` keys).
+  - `localStorage['coby_life_os_v1']` (v3 schema; auto-migrates v2 and legacy `sylva_personal_os_v2`).
   - Automatically mirrored into **IndexedDB (`coby_life_idb`)** as a unified snapshot (`coby-life-backup-v1`) on every state change.
-- **Cloud DB Sync (`Settings → Cloud DB` in `src/components/pages/SettingsPage.tsx`):**
-  - Supports **Supabase PostgreSQL** (recommended; free 500 MB tier; 1-click copyable `SUPABASE_SETUP_SQL` creates RLS-locked `public.coby_vault` + SHA-256 secret-checked `SECURITY DEFINER` RPCs `coby_vault_pull` & `coby_vault_push`) and **GitHub Private Gist** (`coby-life-db.json`).
-  - Bidirectional auto-sync: debounced push (1.4s) after any Tasks/Finance/Settings change, auto-pull on app launch & window focus (timestamp-compared).
-  - **Device Pairing (`COBYDB:...`):** 1-click *Copy device code* / *Apply code* to link iPhone ↔ Laptop without retyping credentials. Credentials are stored **only** in device `localStorage['coby_cloud_db_config_v1']` and never committed to Git.
+- **Cloud DB & Gmail Inbox Sync (`Settings → Cloud DB` + `GmailSetupModal`):**
+  - Supports **Supabase PostgreSQL** (`public.coby_vault` + append-only `public.coby_finance_inbox` protected by a separate write-only `ingest_key_hash` so Google Apps Script can never read vault data or PIN) and **GitHub Private Gist** (`coby-life-db.json`).
+  - Bidirectional auto-sync: debounced push (1.4s) after any Tasks/Finance/Settings change, auto-pull of vault + pending Gmail Inbox on app launch & window focus.
+  - **Device Pairing (`COBYDB:...`):** 1-click *Copy device code* / *Apply code* transfers Supabase + Mobile `"Sync Gmail"` Web App config to Mobile Safari/Chrome in 1 paste. Credentials stay **only** in device `localStorage['coby_cloud_db_config_v1']`.
 - **Manual Backup & PIN Lock:**
   - All-in-one JSON export/import (`coby-life-backup-YYYY-MM-DD.json`) in Account popover & `Settings → Data & Backup`.
   - Optional local PIN lock (`src/components/PinLockView.tsx`).

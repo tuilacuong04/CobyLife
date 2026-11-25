@@ -90,23 +90,45 @@ export function formatMoneyCompact(amount: number, currency: CurrencyCode = 'VND
   return `${sign}${Math.round(abs)} ₫`;
 }
 
-/**
- * Parses shorthand currency input:
- * "50k" -> 50000, "1.5m" / "1.5tr" -> 1500000, "250,000" -> 250000
- */
-export function parseSmartAmount(raw: string): number {
-  const cleaned = raw.trim().toLowerCase().replace(/\s+/g, '').replace(/[₫$]/g, '');
+function parseSingleSmartToken(token: string): number {
+  const cleaned = token.trim().toLowerCase().replace(/\s+/g, '').replace(/[₫$]/g, '');
   if (!cleaned) return 0;
 
-  const mMatch = cleaned.match(/^([\d.,]+)(tr|trieu|triệu|m)$/);
+  const bMatch = cleaned.match(/^([\d.,]+)(ty|tỷ|b)$/);
+  if (bMatch) {
+    const rawNum = bMatch[1];
+    const num = /^\d{1,3}([.,]\d{3})+$/.test(rawNum)
+      ? Number(rawNum.replace(/[.,]/g, ''))
+      : Number(rawNum.replace(',', '.'));
+    return Number.isFinite(num) ? Math.round(num * 1_000_000_000) : 0;
+  }
+
+  const mMatch = cleaned.match(/^([\d.,]+)(tr|trieu|triệu|cu|củ|m)$/);
   if (mMatch) {
-    const num = Number(mMatch[1].replace(',', '.'));
+    const rawNum = mMatch[1];
+    const num = Number(rawNum.replace(',', '.'));
     return Number.isFinite(num) ? Math.round(num * 1_000_000) : 0;
+  }
+
+  const litMatch = cleaned.match(/^([\d.,]+)(lit|lít)$/);
+  if (litMatch) {
+    const num = Number(litMatch[1].replace(',', '.'));
+    return Number.isFinite(num) ? Math.round(num * 100_000) : 0;
+  }
+
+  const xiMatch = cleaned.match(/^([\d.,]+)(xi|xị)$/);
+  if (xiMatch) {
+    const num = Number(xiMatch[1].replace(',', '.'));
+    return Number.isFinite(num) ? Math.round(num * 10_000) : 0;
   }
 
   const kMatch = cleaned.match(/^([\d.,]+)(k|ng|nghìn|nghin)$/);
   if (kMatch) {
-    const num = Number(kMatch[1].replace(',', '.'));
+    const rawNum = kMatch[1];
+    // Fix "1,500k" / "1.500k" -> 1500 * 1000 = 1,500,000 instead of 1,500
+    const num = /^\d{1,3}([.,]\d{3})+$/.test(rawNum)
+      ? Number(rawNum.replace(/[.,]/g, ''))
+      : Number(rawNum.replace(',', '.'));
     return Number.isFinite(num) ? Math.round(num * 1_000) : 0;
   }
 
@@ -118,6 +140,29 @@ export function parseSmartAmount(raw: string): number {
   const normalized = cleaned.replace(',', '.');
   const val = Number(normalized);
   return Number.isFinite(val) ? Math.round(val) : 0;
+}
+
+/**
+ * Parses shorthand currency input & inline arithmetic:
+ * "50k" -> 50000, "1,500k" -> 1500000, "1.5m" / "1.5tr" -> 1500000, "45k+15k" -> 60000
+ */
+export function parseSmartAmount(raw: string): number {
+  const expr = raw.trim();
+  if (!expr) return 0;
+  if (/[+-]/.test(expr)) {
+    const parts = expr.match(/[+-]?[^+-]+/g);
+    if (parts && parts.length > 1) {
+      let total = 0;
+      for (const part of parts) {
+        const trimmed = part.trim();
+        const sign = trimmed.startsWith('-') ? -1 : 1;
+        const body = trimmed.replace(/^[+-]\s*/, '');
+        total += sign * parseSingleSmartToken(body);
+      }
+      return Math.max(0, Math.round(total));
+    }
+  }
+  return parseSingleSmartToken(expr);
 }
 
 export function getInitials(name: string): string {

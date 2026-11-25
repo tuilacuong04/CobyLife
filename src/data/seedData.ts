@@ -4,6 +4,11 @@ import {
   FutureModuleIdea,
   PersistedAppState,
 } from '../types';
+import {
+  DEFAULT_AUTO_RULES,
+  DEFAULT_QUICK_PRESETS,
+  DEFAULT_RECURRING_BILLS,
+} from '../utils/financeEngine';
 import { addDaysIso, currentMonthKey, localIsoDate, shiftMonthKey } from '../utils/format';
 
 export const DEFAULT_FINANCE_CATEGORIES: FinanceCategory[] = [
@@ -27,6 +32,7 @@ export const DEFAULT_WALLETS: FinanceWallet[] = [
     kind: 'bank',
     initialBalance: 18500000,
     tone: 'sky',
+    accountHint: '9012',
     note: 'Primary checking & salary account',
   },
   {
@@ -103,7 +109,7 @@ export function createStarterState(): PersistedAppState {
   const prev3 = shiftMonthKey(curM, -3);
 
   return {
-    version: 2,
+    version: 3,
     tasks: [
       {
         id: 't-1',
@@ -249,6 +255,12 @@ export function createStarterState(): PersistedAppState {
         { id: 'tx-p3-4', type: 'expense', amount: 1100000, categoryId: 'cat-study', walletId: 'w-bank', date: monthDay(prev3, 18), note: 'Books & online course' },
         { id: 'tx-p3-5', type: 'expense', amount: 1200000, categoryId: 'cat-move', walletId: 'w-cash', date: monthDay(prev3, 24), note: 'Fuel & transport' },
       ],
+      inbox: [],
+      rules: DEFAULT_AUTO_RULES,
+      recurringBills: DEFAULT_RECURRING_BILLS,
+      quickPresets: DEFAULT_QUICK_PRESETS,
+      paydayDay: 1,
+      usdVndRate: 25500,
     },
     futureModules: DEFAULT_FUTURE_IDEAS,
     settings: {
@@ -283,6 +295,12 @@ export function createEmptyPersonalState(): PersistedAppState {
       categories: DEFAULT_FINANCE_CATEGORIES,
       transactions: [],
       budgets: [],
+      inbox: [],
+      rules: DEFAULT_AUTO_RULES,
+      recurringBills: [],
+      quickPresets: DEFAULT_QUICK_PRESETS,
+      paydayDay: 1,
+      usdVndRate: 25500,
     },
   };
 }
