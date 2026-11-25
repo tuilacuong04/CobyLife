@@ -150,4 +150,4 @@ flowchart LR
 2. **Add a VN Bank / Merchant Parser:**
    - Add sender rules in `src/utils/vnGmailParser.ts` (L131–220) + domain to `ALLOWED_DOMAINS` in `generateGoogleAppsScriptCode` (`src/utils/cloudDb.ts` L745+), and optional guide entry in `VN_BANK_GMAIL_GUIDE` (`src/utils/financeEngine.ts` L148–191).
 3. **Build & Deploy to Live GitHub Pages (`gh-pages` branch):**
-   - Run `npx tsc && npx vite build --base /Demo_APP/`, copy `dist/index.html` → `dist/404.html`, create `dist/.nojekyll`, and push `dist/` contents to `gh-pages` branch (do NOT commit `dist/` or `node_modules/` to `main`).
+   - Run `npx tsc && npx vite build --base /CobyLife/`, copy `dist/index.html` → `dist/404.html`, create `dist/.nojekyll`, and push `dist/` contents to `gh-pages` branch (do NOT commit `dist/` or `node_modules/` to `main`).

@@ -50,5 +50,5 @@
 ```bash
 npm.cmd install
 npm.cmd run dev
-npx.cmd tsc && npx.cmd vite build --base /Demo_APP/
+npx.cmd tsc && npx.cmd vite build --base /CobyLife/
 ```
