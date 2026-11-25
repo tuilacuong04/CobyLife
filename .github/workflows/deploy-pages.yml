@@ -40,7 +40,7 @@ jobs:
         run: |
           VITE_DEMO=1 npm --prefix opengym/frontend run build -- --outDir ../../public/opengym --emptyOutDir
           git clone --depth=1 --filter=blob:none --sparse https://github.com/DuarteSantos8/openGym.git /tmp/opengym-media
-          git -C /tmp/opengym-media sparse-checkout set catalogue/media scripts/catalogue/stage-media.mjs
+          git -C /tmp/opengym-media sparse-checkout set catalogue/media scripts/catalogue
           node /tmp/opengym-media/scripts/catalogue/stage-media.mjs public/opengym
           rm -rf /tmp/opengym-media
           BASE_PATH="${{ steps.pages.outputs.base_path }}"
