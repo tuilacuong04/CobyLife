@@ -8,7 +8,7 @@ import {
   TASK_PRIORITY_META,
   TASK_STATUS_META,
 } from '../utils/format';
-import { AnimatedDrawer } from './Motion';
+import { AnimatedDrawer, SlidingSegmented } from './Motion';
 import { IconCheck, IconClose, IconPin, IconPlus, IconTrash } from './Icons';
 
 export const Drawers: React.FC = () => {
@@ -86,20 +86,17 @@ export const Drawers: React.FC = () => {
         <div className="drawer__body">
           <div className="drawer-section">
             <div className="drawer-section__title">Status</div>
-            <div className="seg" style={{ width: '100%', justifyContent: 'space-between' }}>
-              {(['todo', 'doing', 'done'] as TaskStatus[]).map((st) => (
-                <button
-                  key={st}
-                  type="button"
-                  className={`seg__btn ${task.status === st ? 'is-active' : ''}`}
-                  style={{ flex: 1 }}
-                  onClick={() => setTaskStatus(task.id, st)}
-                >
-                  <span className={`stage-dot ${TASK_STATUS_META[st].dot}`} />
-                  {TASK_STATUS_META[st].label}
-                </button>
-              ))}
-            </div>
+            <SlidingSegmented<TaskStatus>
+              className="seg--full"
+              ariaLabel="Task status"
+              value={task.status}
+              onChange={(st) => setTaskStatus(task.id, st)}
+              items={(['todo', 'doing', 'done'] as TaskStatus[]).map((st) => ({
+                id: st,
+                label: TASK_STATUS_META[st].label,
+                icon: <span className={`stage-dot ${TASK_STATUS_META[st].dot}`} />,
+              }))}
+            />
           </div>
 
           <div className="drawer-section">
@@ -327,38 +324,30 @@ export const Drawers: React.FC = () => {
 
           <div className="drawer-section">
             <div className="drawer-section__title">Type</div>
-            <div className="seg" style={{ width: '100%' }}>
-              {(
-                [
-                  { id: 'expense', label: 'Expense' },
-                  { id: 'income', label: 'Income' },
-                  { id: 'transfer', label: 'Transfer' },
-                ] as { id: TxType; label: string }[]
-              ).map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`seg__btn ${tx.type === item.id ? 'is-active' : ''}`}
-                  style={{ flex: 1 }}
-                  onClick={() => {
-                    const nextCat =
-                      item.id === 'income'
-                        ? state.finance.categories.find((c) => c.kind === 'income')?.id || tx.categoryId
-                        : state.finance.categories.find((c) => c.kind === 'expense')?.id || tx.categoryId;
-                    updateTransaction(tx.id, {
-                      type: item.id,
-                      categoryId: nextCat,
-                      toWalletId:
-                        item.id === 'transfer'
-                          ? state.finance.wallets.find((w) => w.id !== tx.walletId)?.id
-                          : undefined,
-                    });
-                  }}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+            <SlidingSegmented<TxType>
+              className="seg--full"
+              ariaLabel="Transaction type"
+              value={tx.type}
+              onChange={(nextType) => {
+                const nextCat =
+                  nextType === 'income'
+                    ? state.finance.categories.find((c) => c.kind === 'income')?.id || tx.categoryId
+                    : state.finance.categories.find((c) => c.kind === 'expense')?.id || tx.categoryId;
+                updateTransaction(tx.id, {
+                  type: nextType,
+                  categoryId: nextCat,
+                  toWalletId:
+                    nextType === 'transfer'
+                      ? state.finance.wallets.find((w) => w.id !== tx.walletId)?.id
+                      : undefined,
+                });
+              }}
+              items={[
+                { id: 'expense', label: 'Expense' },
+                { id: 'income', label: 'Income' },
+                { id: 'transfer', label: 'Transfer' },
+              ]}
+            />
           </div>
 
           <div className="drawer-section">

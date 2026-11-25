@@ -11,7 +11,7 @@ import {
 } from '../../utils/cloudDb';
 import { VN_BANK_GMAIL_GUIDE } from '../../utils/financeEngine';
 import { formatMoney, localIsoDate, parseSmartAmount } from '../../utils/format';
-import { AnimatedModal } from '../Motion';
+import { AnimatedModal, SlidingSegmented } from '../Motion';
 import {
   IconCheck,
   IconClose,
@@ -128,169 +128,169 @@ export const QuickLogModal: React.FC<{
         </button>
       </div>
 
-      <form className="modal__body form-stack" onSubmit={handleSave} style={{ gap: 12 }}>
-        {/* 1-Tap Instant Cash Presets */}
-        <div>
-          <div className="field__label" style={{ marginBottom: 6 }}>
-            1-Tap Instant Log (uses selected wallet)
+      <form className="modal__form" onSubmit={handleSave}>
+        <div className="modal__body form-stack" style={{ gap: 12 }}>
+          {/* 1-Tap Instant Cash Presets */}
+          <div>
+            <div className="field__label" style={{ marginBottom: 6 }}>
+              1-Tap Instant Log (uses selected wallet)
+            </div>
+            <div className="preset-strip">
+              {(state.finance.quickPresets || []).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="chip"
+                  style={{ flexShrink: 0, height: 30, fontSize: 12.5 }}
+                  onClick={() => handleQuickPreset(p)}
+                >
+                  {p.label} · {formatMoney(p.amount, currency)}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="preset-strip">
-            {(state.finance.quickPresets || []).map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className="chip"
-                style={{ flexShrink: 0, height: 30, fontSize: 12.5 }}
-                onClick={() => handleQuickPreset(p)}
-              >
-                {p.label} · {formatMoney(p.amount, currency)}
-              </button>
-            ))}
-          </div>
-        </div>
 
-        {/* Type Switch */}
-        <div className="seg" style={{ width: '100%' }}>
-          {(['expense', 'income', 'transfer'] as TxType[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={`seg__btn ${type === t ? 'is-active' : ''}`}
-              style={{ flex: 1, textTransform: 'capitalize' }}
-              onClick={() => {
-                setType(t);
-                const nextList = t === 'income' ? incomeCats : expenseCats;
-                if (nextList[0]) setCategoryId(nextList[0].id);
-              }}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+          {/* Type Switch */}
+          <SlidingSegmented<TxType>
+            className="seg--full"
+            ariaLabel="Transaction type"
+            value={type}
+            onChange={(t) => {
+              setType(t);
+              const nextList = t === 'income' ? incomeCats : expenseCats;
+              if (nextList[0]) setCategoryId(nextList[0].id);
+            }}
+            items={[
+              { id: 'expense', label: 'Expense' },
+              { id: 'income', label: 'Income' },
+              { id: 'transfer', label: 'Transfer' },
+            ]}
+          />
 
-        {/* Big Numeric Readout */}
-        <div
-          style={{
-            padding: '10px 14px',
-            borderRadius: 16,
-            background: 'var(--well)',
-            border: '1px solid var(--line)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <span style={{ fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 }}>Amount</span>
-          <span
+          {/* Big Numeric Readout */}
+          <div
             style={{
-              fontSize: 24,
-              fontWeight: 800,
-              fontVariantNumeric: 'tabular-nums',
-              color: amount > 0 ? 'var(--text)' : 'var(--faint)',
+              padding: '10px 14px',
+              borderRadius: 16,
+              background: 'var(--well)',
+              border: '1px solid var(--line)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
             }}
           >
-            {type === 'expense' ? '-' : type === 'income' ? '+' : '⇄ '}
-            {formatMoney(amount, currency)}
-          </span>
-        </div>
+            <span style={{ fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 }}>Amount</span>
+            <span
+              style={{
+                fontSize: 24,
+                fontWeight: 800,
+                fontVariantNumeric: 'tabular-nums',
+                color: amount > 0 ? 'var(--text)' : 'var(--faint)',
+              }}
+            >
+              {type === 'expense' ? '-' : type === 'income' ? '+' : '⇄ '}
+              {formatMoney(amount, currency)}
+            </span>
+          </div>
 
-        {/* Wallet & Category Compact Selectors */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <select
-            className="select"
-            value={walletId}
-            aria-label="Wallet"
-            onChange={(e) => setWalletId(e.target.value)}
-          >
-            {state.finance.wallets.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name}
-              </option>
-            ))}
-          </select>
-
-          {type === 'transfer' ? (
+          {/* Wallet & Category Compact Selectors */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <select
               className="select"
-              value={toWalletId}
-              aria-label="Destination wallet"
-              onChange={(e) => setToWalletId(e.target.value)}
+              value={walletId}
+              aria-label="Wallet"
+              onChange={(e) => setWalletId(e.target.value)}
             >
-              {state.finance.wallets
-                .filter((w) => w.id !== walletId)
-                .map((w) => (
-                  <option key={w.id} value={w.id}>
-                    To: {w.name}
-                  </option>
-                ))}
-            </select>
-          ) : (
-            <select
-              className="select"
-              value={categoryId}
-              aria-label="Category"
-              onChange={(e) => setCategoryId(e.target.value)}
-            >
-              {activeCats.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+              {state.finance.wallets.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
                 </option>
               ))}
             </select>
-          )}
-        </div>
 
-        {/* Zero-Zoom Custom 000 Keypad */}
-        <div className="kpad">
-          {['1', '2', '3', '4', '5', '6', '7', '8', '9', '000', '0', 'DEL'].map((k) => (
-            <button
-              key={k}
-              type="button"
-              className="kpad__key"
-              onClick={() => tapKey(k)}
-            >
-              {k === 'DEL' ? '⌫' : k}
-            </button>
-          ))}
-        </div>
+            {type === 'transfer' ? (
+              <select
+                className="select"
+                value={toWalletId}
+                aria-label="Destination wallet"
+                onChange={(e) => setToWalletId(e.target.value)}
+              >
+                {state.finance.wallets
+                  .filter((w) => w.id !== walletId)
+                  .map((w) => (
+                    <option key={w.id} value={w.id}>
+                      To: {w.name}
+                    </option>
+                  ))}
+              </select>
+            ) : (
+              <select
+                className="select"
+                value={categoryId}
+                aria-label="Category"
+                onChange={(e) => setCategoryId(e.target.value)}
+              >
+                {activeCats.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
 
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input
-            className="input"
-            style={{ flex: 1 }}
-            placeholder="Optional note (e.g., Street pho, Parking)..."
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-          {type === 'expense' && (
-            <button
-              type="button"
-              className={`btn btn--sm ${splitMode ? 'btn--primary' : 'btn--ghost'}`}
-              style={{ height: 40 }}
-              onClick={() => {
-                setSplitMode((v) => !v);
-                if (!myShareRaw && amount > 0) setMyShareRaw(String(Math.round(amount / 2)));
-              }}
-            >
-              <IconSplit size={14} />
-              Split
-            </button>
-          )}
-        </div>
+          {/* Zero-Zoom Custom 000 Keypad */}
+          <div className="kpad">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '000', '0', 'DEL'].map((k) => (
+              <button
+                key={k}
+                type="button"
+                className="kpad__key"
+                onClick={() => tapKey(k)}
+              >
+                {k === 'DEL' ? '⌫' : k}
+              </button>
+            ))}
+          </div>
 
-        {splitMode && type === 'expense' && (
-          <label className="field">
-            <span className="field__label">My personal share (rest tracked as Reimbursable)</span>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
               className="input"
-              placeholder="e.g. 150k"
-              value={myShareRaw}
-              onChange={(e) => setMyShareRaw(e.target.value)}
+              style={{ flex: 1 }}
+              placeholder="Optional note (e.g., Street pho, Parking)..."
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
             />
-          </label>
-        )}
+            {type === 'expense' && (
+              <button
+                type="button"
+                className={`btn btn--sm ${splitMode ? 'btn--primary' : 'btn--ghost'}`}
+                style={{ height: 40 }}
+                onClick={() => {
+                  setSplitMode((v) => !v);
+                  if (!myShareRaw && amount > 0) setMyShareRaw(String(Math.round(amount / 2)));
+                }}
+              >
+                <IconSplit size={14} />
+                Split
+              </button>
+            )}
+          </div>
 
-        <div className="modal__foot" style={{ paddingTop: 4 }}>
+          {splitMode && type === 'expense' && (
+            <label className="field">
+              <span className="field__label">My personal share (rest tracked as Reimbursable)</span>
+              <input
+                className="input"
+                placeholder="e.g. 150k"
+                value={myShareRaw}
+                onChange={(e) => setMyShareRaw(e.target.value)}
+              />
+            </label>
+          )}
+        </div>
+
+        <div className="modal__foot">
           <button type="button" className="btn btn--ghost" onClick={() => tapKey('CLR')}>
             Clear
           </button>
@@ -416,25 +416,17 @@ export const GmailSetupModal: React.FC<{ onClose: () => void }> = ({ onClose }) 
         </button>
       </div>
 
-      <div className="modal__body form-stack" style={{ maxHeight: '76dvh', overflowY: 'auto' }}>
-        <div className="seg" style={{ width: '100%' }}>
-          <button
-            type="button"
-            className={`seg__btn ${tab === 'setup' ? 'is-active' : ''}`}
-            style={{ flex: 1 }}
-            onClick={() => setTab('setup')}
-          >
-            2-Minute Setup
-          </button>
-          <button
-            type="button"
-            className={`seg__btn ${tab === 'banks' ? 'is-active' : ''}`}
-            style={{ flex: 1 }}
-            onClick={() => setTab('banks')}
-          >
-            VN Bank Email Guide (13 Banks)
-          </button>
-        </div>
+      <div className="modal__body form-stack">
+        <SlidingSegmented<'setup' | 'banks'>
+          className="seg--full"
+          ariaLabel="Gmail setup sections"
+          value={tab}
+          onChange={setTab}
+          items={[
+            { id: 'setup', label: '2-Minute Setup' },
+            { id: 'banks', label: 'VN Bank Guide (13)' },
+          ]}
+        />
 
         {tab === 'setup' ? (
           <div className="stack-list" style={{ gap: 12 }}>
@@ -631,12 +623,12 @@ export const GmailSetupModal: React.FC<{ onClose: () => void }> = ({ onClose }) 
             ))}
           </div>
         )}
+      </div>
 
-        <div className="modal__foot">
-          <button type="button" className="btn btn--primary" onClick={onClose}>
-            Done
-          </button>
-        </div>
+      <div className="modal__foot">
+        <button type="button" className="btn btn--primary" onClick={onClose}>
+          Done
+        </button>
       </div>
     </AnimatedModal>
   );
@@ -672,15 +664,16 @@ export const ReconcileWalletModal: React.FC<{
 
   const parsedTarget = actualRaw.trim() === '0' ? 0 : parseSmartAmount(actualRaw);
   const diff = Math.round(parsedTarget - currentBal);
+  const resolvedMode = diff >= 0 && mode === 'transfer' ? 'expense' : mode;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     reconcileWalletBalance({
       walletId,
       targetBalance: parsedTarget,
-      mode: diff > 0 && mode === 'expense' ? 'income' : mode,
+      mode: diff > 0 && resolvedMode === 'expense' ? 'income' : resolvedMode,
       categoryId,
-      toWalletId: mode === 'transfer' ? toWalletId : undefined,
+      toWalletId: resolvedMode === 'transfer' ? toWalletId : undefined,
       note,
     });
     onClose();
@@ -697,123 +690,122 @@ export const ReconcileWalletModal: React.FC<{
         </button>
       </div>
 
-      <form className="modal__body form-stack" onSubmit={handleSubmit}>
-        <div
-          style={{
-            padding: '10px 14px',
-            borderRadius: 14,
-            background: 'var(--well)',
-            border: '1px solid var(--line)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: 13,
-          }}
-        >
-          <span style={{ color: 'var(--muted)' }}>Current app balance:</span>
-          <strong>{formatMoney(currentBal, currency)}</strong>
-        </div>
+      <form className="modal__form" onSubmit={handleSubmit}>
+        <div className="modal__body form-stack">
+          <div
+            style={{
+              padding: '10px 14px',
+              borderRadius: 14,
+              background: 'var(--well)',
+              border: '1px solid var(--line)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontSize: 13,
+            }}
+          >
+            <span style={{ color: 'var(--muted)' }}>Current app balance:</span>
+            <strong>{formatMoney(currentBal, currency)}</strong>
+          </div>
 
-        <label className="field">
-          <span className="field__label">
-            Actual real-world / bank balance{' '}
-            {diff !== 0 && (
-              <strong style={{ color: diff < 0 ? 'var(--coral)' : 'var(--good)', marginLeft: 6 }}>
-                ({diff > 0 ? '+' : ''}
-                {formatMoney(diff, currency)} gap)
-              </strong>
-            )}
-          </span>
-          <input
-            className="input"
-            value={actualRaw}
-            onChange={(e) => setActualRaw(e.target.value)}
-            placeholder="e.g. 8.2m, 450k, 0"
-          />
-        </label>
+          <label className="field">
+            <span className="field__label">
+              Actual real-world / bank balance{' '}
+              {diff !== 0 && (
+                <strong style={{ color: diff < 0 ? 'var(--coral)' : 'var(--good)', marginLeft: 6 }}>
+                  ({diff > 0 ? '+' : ''}
+                  {formatMoney(diff, currency)} gap)
+                </strong>
+              )}
+            </span>
+            <input
+              className="input"
+              value={actualRaw}
+              onChange={(e) => setActualRaw(e.target.value)}
+              placeholder="e.g. 8.2m, 450k, 0"
+            />
+          </label>
 
-        {diff !== 0 && (
-          <>
-            <div className="field">
-              <span className="field__label">How should Coby LIFE resolve this difference?</span>
-              <div className="seg" style={{ width: '100%' }}>
-                <button
-                  type="button"
-                  className={`seg__btn ${mode === 'expense' ? 'is-active' : ''}`}
-                  style={{ flex: 1 }}
-                  onClick={() => setMode('expense')}
-                >
-                  {diff < 0 ? 'Log Expense' : 'Log Income'}
-                </button>
-                {diff < 0 && state.finance.wallets.length > 1 && (
+          {diff !== 0 && (
+            <>
+              <div className="field">
+                <span className="field__label">How should Coby LIFE resolve this difference?</span>
+                <div className="seg seg--full">
                   <button
                     type="button"
-                    className={`seg__btn ${mode === 'transfer' ? 'is-active' : ''}`}
-                    style={{ flex: 1 }}
-                    onClick={() => setMode('transfer')}
+                    className={`seg__btn ${resolvedMode === 'expense' ? 'is-active' : ''}`}
+                    onClick={() => setMode('expense')}
                   >
-                    Transfer
+                    {diff < 0 ? 'Log Expense' : 'Log Income'}
                   </button>
-                )}
-                <button
-                  type="button"
-                  className={`seg__btn ${mode === 'silent' ? 'is-active' : ''}`}
-                  style={{ flex: 1 }}
-                  onClick={() => setMode('silent')}
-                >
-                  Silent Sync
-                </button>
+                  {diff < 0 && state.finance.wallets.length > 1 && (
+                    <button
+                      type="button"
+                      className={`seg__btn ${resolvedMode === 'transfer' ? 'is-active' : ''}`}
+                      onClick={() => setMode('transfer')}
+                    >
+                      Transfer
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={`seg__btn ${resolvedMode === 'silent' ? 'is-active' : ''}`}
+                    onClick={() => setMode('silent')}
+                  >
+                    Silent Sync
+                  </button>
+                </div>
               </div>
-            </div>
 
-            {mode === 'expense' && diff < 0 && (
+              {resolvedMode === 'expense' && diff < 0 && (
+                <label className="field">
+                  <span className="field__label">Category for unlogged spend</span>
+                  <select
+                    className="select"
+                    value={categoryId}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                  >
+                    {state.finance.categories
+                      .filter((c) => c.kind === 'expense')
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+
+              {resolvedMode === 'transfer' && diff < 0 && (
+                <label className="field">
+                  <span className="field__label">Moved to wallet (e.g. ATM Cash / MoMo)</span>
+                  <select
+                    className="select"
+                    value={toWalletId}
+                    onChange={(e) => setToWalletId(e.target.value)}
+                  >
+                    {state.finance.wallets
+                      .filter((w) => w.id !== walletId)
+                      .map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+
               <label className="field">
-                <span className="field__label">Category for unlogged spend</span>
-                <select
-                  className="select"
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
-                >
-                  {state.finance.categories
-                    .filter((c) => c.kind === 'expense')
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                </select>
+                <span className="field__label">Note (optional)</span>
+                <input
+                  className="input"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="e.g., Pocket cash coffee & parking"
+                />
               </label>
-            )}
-
-            {mode === 'transfer' && diff < 0 && (
-              <label className="field">
-                <span className="field__label">Moved to wallet (e.g. ATM Cash / MoMo)</span>
-                <select
-                  className="select"
-                  value={toWalletId}
-                  onChange={(e) => setToWalletId(e.target.value)}
-                >
-                  {state.finance.wallets
-                    .filter((w) => w.id !== walletId)
-                    .map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name}
-                      </option>
-                    ))}
-                </select>
-              </label>
-            )}
-
-            <label className="field">
-              <span className="field__label">Note (optional)</span>
-              <input
-                className="input"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="e.g., Pocket cash coffee & parking"
-              />
-            </label>
-          </>
-        )}
+            </>
+          )}
+        </div>
 
         <div className="modal__foot">
           <button type="button" className="btn btn--ghost" onClick={onClose}>
@@ -836,6 +828,8 @@ export const ManageCategoriesModal: React.FC<{ onClose: () => void }> = ({ onClo
   const [name, setName] = useState('');
   const [tone, setTone] = useState<AccentTone>('coral');
 
+  const expenseCount = state.finance.categories.filter((c) => c.kind === 'expense').length;
+  const incomeCount = state.finance.categories.filter((c) => c.kind === 'income').length;
   const list = state.finance.categories.filter((c) => c.kind === kind);
 
   const handleAdd = (e: React.FormEvent) => {
@@ -862,24 +856,16 @@ export const ManageCategoriesModal: React.FC<{ onClose: () => void }> = ({ onClo
       </div>
 
       <div className="modal__body form-stack">
-        <div className="seg" style={{ width: '100%' }}>
-          <button
-            type="button"
-            className={`seg__btn ${kind === 'expense' ? 'is-active' : ''}`}
-            style={{ flex: 1 }}
-            onClick={() => setKind('expense')}
-          >
-            Expense ({state.finance.categories.filter((c) => c.kind === 'expense').length})
-          </button>
-          <button
-            type="button"
-            className={`seg__btn ${kind === 'income' ? 'is-active' : ''}`}
-            style={{ flex: 1 }}
-            onClick={() => setKind('income')}
-          >
-            Income ({state.finance.categories.filter((c) => c.kind === 'income').length})
-          </button>
-        </div>
+        <SlidingSegmented<'expense' | 'income'>
+          className="seg--full"
+          ariaLabel="Category kind"
+          value={kind}
+          onChange={setKind}
+          items={[
+            { id: 'expense', label: `Expense (${expenseCount})` },
+            { id: 'income', label: `Income (${incomeCount})` },
+          ]}
+        />
 
         <form onSubmit={handleAdd} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input
@@ -938,12 +924,12 @@ export const ManageCategoriesModal: React.FC<{ onClose: () => void }> = ({ onClo
             </div>
           ))}
         </div>
+      </div>
 
-        <div className="modal__foot">
-          <button type="button" className="btn btn--primary" onClick={onClose}>
-            Done
-          </button>
-        </div>
+      <div className="modal__foot">
+        <button type="button" className="btn btn--primary" onClick={onClose}>
+          Done
+        </button>
       </div>
     </AnimatedModal>
   );
@@ -1063,12 +1049,12 @@ export const ManageRulesModal: React.FC<{ onClose: () => void }> = ({ onClose })
             </div>
           ))}
         </div>
+      </div>
 
-        <div className="modal__foot">
-          <button type="button" className="btn btn--primary" onClick={onClose}>
-            Done
-          </button>
-        </div>
+      <div className="modal__foot">
+        <button type="button" className="btn btn--primary" onClick={onClose}>
+          Done
+        </button>
       </div>
     </AnimatedModal>
   );
@@ -1137,107 +1123,109 @@ export const RecurringBillModal: React.FC<{
         </button>
       </div>
 
-      <form className="modal__body form-stack" onSubmit={handleSubmit}>
-        <label className="field">
-          <span className="field__label">Subscription / Bill name</span>
-          <input
-            className="input"
-            placeholder="e.g. Apartment Rent, Cursor Pro, Spotify, iCloud+"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-
-        <div className="form-grid">
+      <form className="modal__form" onSubmit={handleSubmit}>
+        <div className="modal__body form-stack">
           <label className="field">
-            <span className="field__label">Amount ({billCurrency === 'USD' ? 'e.g. 20' : 'e.g. 260k, 3.8m'})</span>
+            <span className="field__label">Subscription / Bill name</span>
             <input
               className="input"
-              placeholder={billCurrency === 'USD' ? '20' : '260k'}
-              value={amountRaw}
-              onChange={(e) => setAmountRaw(e.target.value)}
+              placeholder="e.g. Apartment Rent, Cursor Pro, Spotify, iCloud+"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
           </label>
-          <label className="field">
-            <span className="field__label">Currency</span>
-            <select
-              className="select"
-              value={billCurrency}
-              onChange={(e) => setBillCurrency(e.target.value as CurrencyCode)}
-            >
-              <option value="VND">VND (₫)</option>
-              <option value="USD">USD ($)</option>
-            </select>
-          </label>
-        </div>
 
-        <div className="form-grid">
-          <label className="field">
-            <span className="field__label">Billing frequency</span>
-            <select
-              className="select"
-              value={cadence}
-              onChange={(e) => setCadence(e.target.value as 'monthly' | 'yearly')}
-            >
-              <option value="monthly">Monthly</option>
-              <option value="yearly">Yearly</option>
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Due day of month (1–28)</span>
-            <input
-              type="number"
-              min={1}
-              max={28}
-              className="input"
-              value={dueDay}
-              onChange={(e) => setDueDay(e.target.value)}
-            />
-          </label>
-        </div>
+          <div className="form-grid">
+            <label className="field">
+              <span className="field__label">Amount ({billCurrency === 'USD' ? 'e.g. 20' : 'e.g. 260k, 3.8m'})</span>
+              <input
+                className="input"
+                placeholder={billCurrency === 'USD' ? '20' : '260k'}
+                value={amountRaw}
+                onChange={(e) => setAmountRaw(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">Currency</span>
+              <select
+                className="select"
+                value={billCurrency}
+                onChange={(e) => setBillCurrency(e.target.value as CurrencyCode)}
+              >
+                <option value="VND">VND (₫)</option>
+                <option value="USD">USD ($)</option>
+              </select>
+            </label>
+          </div>
 
-        <div className="form-grid">
-          <label className="field">
-            <span className="field__label">Wallet</span>
-            <select
-              className="select"
-              value={walletId}
-              onChange={(e) => setWalletId(e.target.value)}
-            >
-              {state.finance.wallets.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Category</span>
-            <select
-              className="select"
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-            >
-              {state.finance.categories
-                .filter((c) => c.kind === 'expense')
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
+          <div className="form-grid">
+            <label className="field">
+              <span className="field__label">Billing frequency</span>
+              <select
+                className="select"
+                value={cadence}
+                onChange={(e) => setCadence(e.target.value as 'monthly' | 'yearly')}
+              >
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </label>
+            <label className="field">
+              <span className="field__label">Due day of month (1–28)</span>
+              <input
+                type="number"
+                min={1}
+                max={28}
+                className="input"
+                value={dueDay}
+                onChange={(e) => setDueDay(e.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="form-grid">
+            <label className="field">
+              <span className="field__label">Wallet</span>
+              <select
+                className="select"
+                value={walletId}
+                onChange={(e) => setWalletId(e.target.value)}
+              >
+                {state.finance.wallets.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
                   </option>
                 ))}
-            </select>
+              </select>
+            </label>
+            <label className="field">
+              <span className="field__label">Category</span>
+              <select
+                className="select"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+              >
+                {state.finance.categories
+                  .filter((c) => c.kind === 'expense')
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="field">
+            <span className="field__label">Gmail auto-match keyword (optional)</span>
+            <input
+              className="input"
+              placeholder="e.g. CURSOR, SPOTIFY, APPLE, FPT"
+              value={merchantPattern}
+              onChange={(e) => setMerchantPattern(e.target.value)}
+            />
           </label>
         </div>
-
-        <label className="field">
-          <span className="field__label">Gmail auto-match keyword (optional)</span>
-          <input
-            className="input"
-            placeholder="e.g. CURSOR, SPOTIFY, APPLE, FPT"
-            value={merchantPattern}
-            onChange={(e) => setMerchantPattern(e.target.value)}
-          />
-        </label>
 
         <div className="modal__foot">
           <button type="button" className="btn btn--ghost" onClick={onClose}>

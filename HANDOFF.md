@@ -5,10 +5,10 @@
 ## 1. Product Overview & User Preferences
 - **App Name:** **Coby LIFE** (`Coby LIFE — Personal OS: Tasks · Finance`)
 - **Owner & Audience:** Single-user personal modular web hub for **Cuong** (`tuilacuong04`).
-- **Live Production URL:** https://tuilacuong04.github.io/Demo_APP/
-- **Repository:** https://github.com/tuilacuong04/Demo_APP (currently **Public** for free GitHub Pages)
+- **Live Production URL:** https://tuilacuong04.github.io/CobyLife/
+- **Repository:** https://github.com/tuilacuong04/CobyLife (currently **Public** for free GitHub Pages)
 - **Communication Language:** User prefers **Vietnamese** in chat; **UI language MUST stay crisp English** so typography/layout proportions match cleanly (while keeping full **VND `₫` / USD `$`** currency support and shorthand amount parsing like `50k`, `1.5m`, `1.5tr`).
-- **Default Landing Page:** Opens straight to **`Overview`** (`/Demo_APP/` → `overview`).
+- **Default Landing Page:** Opens straight to **`Overview`** (`/CobyLife/` → `overview`).
 - **Visual Style:** Smoked Glass (Dark, default) & Milk Glass (Light) using `Urbanist` font, lime accent `#c4ef4f`, GSAP + 240 Hz spring sidebar/dock/flyer morphs, bottom-sheet modals/drawers on mobile.
 - **Note on Gym Removal:** The embedded `openGym` module was intentionally removed per user request so Coby LIFE stays lightweight, fast, and focused on Tasks + Finance + future custom modules.
 
@@ -65,7 +65,7 @@ npm run dev
 ### Production Build
 ```bash
 npx tsc
-npx vite build --base /Demo_APP/
+npx vite build --base /CobyLife/
 cp dist/index.html dist/404.html
 touch dist/.nojekyll
 ```
@@ -74,7 +74,7 @@ touch dist/.nojekyll
 ```bash
 TMP_PAGES="/tmp/gh-pages-delta"
 rm -rf "$TMP_PAGES"
-git clone --depth 1 --branch gh-pages https://github.com/tuilacuong04/Demo_APP.git "$TMP_PAGES"
+git clone --depth 1 --branch gh-pages https://github.com/tuilacuong04/CobyLife.git "$TMP_PAGES"
 
 find "$TMP_PAGES" -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
 cp -R dist/. "$TMP_PAGES/"

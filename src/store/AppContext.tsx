@@ -18,7 +18,7 @@ import {
   ToastItem,
   UserProfile,
 } from '../types';
-import { createEmptyPersonalState, createStarterState } from '../data/seedData';
+import { createDemoSampleState, createEmptyPersonalState, createStarterState } from '../data/seedData';
 import {
   getLocalUpdatedAt,
   hasStoredAppState,
@@ -29,6 +29,7 @@ import {
 } from '../utils/storage';
 import {
   ackSupabaseInboxItems,
+  clearLocalIdbSnapshot,
   CloudDbConfig,
   CloudSyncStatus,
   DEFAULT_CLOUD_CONFIG,
@@ -214,6 +215,10 @@ interface AppContextValue {
   // Unified Backup & Reset
   exportUnifiedBackup: () => string;
   importUnifiedBackup: (rawJson: string) => { ok: boolean; error?: string };
+  clearTasksData: () => void;
+  clearFinanceData: () => void;
+  clearAllWorkspaceData: (opts?: { factoryReset?: boolean }) => Promise<void>;
+  loadDemoSampleData: () => void;
   clearToEmpty: () => void;
   resetStarterData: () => void;
 
@@ -259,6 +264,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const exitTweenRef = useRef<gsap.core.Tween | null>(null);
   const hydratedRef = useRef(false);
   const skipNextPushRef = useRef(false);
+  const skipNextPersistRef = useRef(false);
+  const skipNextIdbRef = useRef(false);
   const pushTimerRef = useRef<number | null>(null);
   const lastFocusPullRef = useRef(0);
 
@@ -410,14 +417,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Persist locally to localStorage + IndexedDB, then debounce Cloud DB sync
   useEffect(() => {
-    saveAppState(state);
     if (!hydratedRef.current) {
       hydratedRef.current = true;
+      saveAppState(state);
       return;
     }
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false;
+      return;
+    }
+    saveAppState(state);
     const nowIso = new Date().toISOString();
     setLocalUpdatedAt(nowIso);
-    void saveLocalIdbSnapshot(buildVaultPayload(nowIso));
+    if (skipNextIdbRef.current) {
+      skipNextIdbRef.current = false;
+    } else {
+      void saveLocalIdbSnapshot(buildVaultPayload(nowIso));
+    }
     if (skipNextPushRef.current) {
       skipNextPushRef.current = false;
       return;
@@ -1684,6 +1700,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [pushToast]
   );
 
+  const clearTasksData = useCallback(() => {
+    const prevTasks = stateRef.current.tasks;
+    setState((prev) => ({ ...prev, tasks: [] }));
+    setDrawer((d) => (d?.kind === 'task' ? null : d));
+    if (prevTasks.length === 0) {
+      pushToast('Tasks are already empty');
+      return;
+    }
+    pushToast(
+      `Cleared ${prevTasks.length} task${prevTasks.length === 1 ? '' : 's'}`,
+      () => {
+        setState((prev) => {
+          const existingIds = new Set(prev.tasks.map((t) => t.id));
+          const restored = prevTasks.filter((t) => !existingIds.has(t.id));
+          return { ...prev, tasks: [...prev.tasks, ...restored] };
+        });
+      }
+    );
+  }, [pushToast]);
+
+  const clearFinanceData = useCallback(() => {
+    const prevFinance = stateRef.current.finance;
+    setState((prev) => ({
+      ...prev,
+      finance: {
+        ...prev.finance,
+        transactions: [],
+        budgets: [],
+        inbox: [],
+        recurringBills: [],
+        wallets: prev.finance.wallets.map((w) => ({
+          ...w,
+          initialBalance: 0,
+          lastReportedBalance: undefined,
+          lastReportedAt: undefined,
+        })),
+      },
+    }));
+    setDrawer((d) => (d?.kind === 'transaction' ? null : d));
+    pushToast('Cleared Finance transactions, budgets, bills & Inbox', () => {
+      setState((prev) => ({ ...prev, finance: prevFinance }));
+    });
+  }, [pushToast]);
+
+  const loadDemoSampleData = useCallback(() => {
+    setState(createDemoSampleState());
+    setDrawer(null);
+    pushToast('Demo sample data loaded');
+  }, [pushToast]);
+
   const clearToEmpty = useCallback(() => {
     setState(createEmptyPersonalState());
     setDrawer(null);
@@ -1753,18 +1819,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [applyVaultPayload, buildVaultPayload, pushToast]
   );
 
+  const resetCloudState = useCallback(
+    (opts?: { silent?: boolean; persistEmptyConfig?: boolean }) => {
+      const reset = { ...DEFAULT_CLOUD_CONFIG };
+      if (opts?.persistEmptyConfig !== false) {
+        saveCloudConfigToStorage(reset);
+      }
+      setCloudConfig(reset);
+      setCloudStatus((prev) => ({
+        ...prev,
+        state: 'local',
+        provider: 'none',
+        lastSyncedAt: opts?.silent ? null : prev.lastSyncedAt,
+        error: undefined,
+      }));
+      if (!opts?.silent) {
+        pushToast('Disconnected Cloud DB — data remains stored locally');
+      }
+    },
+    [pushToast]
+  );
+
   const disconnectCloudDb = useCallback(() => {
-    const reset = { ...DEFAULT_CLOUD_CONFIG };
-    saveCloudConfigToStorage(reset);
-    setCloudConfig(reset);
-    setCloudStatus((prev) => ({
-      ...prev,
-      state: 'local',
-      provider: 'none',
-      error: undefined,
-    }));
-    pushToast('Disconnected Cloud DB — data remains stored locally');
-  }, [pushToast]);
+    resetCloudState({ silent: false, persistEmptyConfig: true });
+  }, [resetCloudState]);
+
+  const clearAllWorkspaceData = useCallback(
+    async (opts?: { factoryReset?: boolean }) => {
+      if (pushTimerRef.current) {
+        window.clearTimeout(pushTimerRef.current);
+        pushTimerRef.current = null;
+      }
+      const isFactory = Boolean(opts?.factoryReset);
+      if (isFactory) {
+        skipNextPersistRef.current = true;
+      } else {
+        skipNextIdbRef.current = true;
+      }
+
+      setState(createEmptyPersonalState());
+      setDrawer(null);
+      if (isFactory) {
+        setModal(null);
+        setLocked(false);
+        setLastGmailSyncAt(null);
+      }
+
+      await clearLocalIdbSnapshot();
+
+      if (isFactory) {
+        resetCloudState({ silent: true, persistEmptyConfig: false });
+        const keysToRemove = [
+          'coby_cloud_db_config_v1',
+          'coby_life_os_v1',
+          'sylva_personal_os_v2',
+          'coby_life_updated_at_v1',
+          'coby_life_auth_account_v1',
+          'coby_life_auth_session_v1',
+        ];
+        for (const key of keysToRemove) {
+          try {
+            window.localStorage.removeItem(key);
+          } catch {
+            // Ignore
+          }
+          try {
+            window.sessionStorage.removeItem(key);
+          } catch {
+            // Ignore
+          }
+        }
+        window.dispatchEvent(new CustomEvent('coby-auth-change'));
+        pushToast('Factory reset complete — all local data cleared');
+      } else {
+        pushToast('Cleared all workspace data — ready for a fresh start');
+      }
+    },
+    [pushToast, resetCloudState]
+  );
 
   const syncCloudNow = useCallback(async () => {
     const cfg = cloudConfigRef.current;
@@ -1935,6 +2067,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deleteFutureIdea,
       exportUnifiedBackup,
       importUnifiedBackup,
+      clearTasksData,
+      clearFinanceData,
+      clearAllWorkspaceData,
+      loadDemoSampleData,
       clearToEmpty,
       resetStarterData,
       cloudConfig,
@@ -2010,6 +2146,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deleteFutureIdea,
       exportUnifiedBackup,
       importUnifiedBackup,
+      clearTasksData,
+      clearFinanceData,
+      clearAllWorkspaceData,
+      loadDemoSampleData,
       clearToEmpty,
       resetStarterData,
       cloudConfig,
