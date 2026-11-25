@@ -1,0 +1,20 @@
+# Dependencies & local caches
+node_modules
+opengym/frontend/node_modules
+.vercel
+
+# Build outputs (built directly on Vercel infrastructure via scripts/vercel-build.mjs)
+dist
+dist-ssr
+public/opengym
+
+# Git & CI metadata
+.git
+.github
+
+# Logs & local env
+logs
+*.log
+.env
+.env.*
+!.env.example

@@ -5,6 +5,7 @@ node_modules/
 dist/
 dist-ssr/
 public/opengym/
+.vercel/
 *.local
 
 # Logs

@@ -1,0 +1,149 @@
+name: Deploy to Vercel
+
+on:
+  # 1. Tự động chạy khi có thay đổi trên main hoặc mở/cập nhật Pull Request
+  push:
+    branches: ['main']
+  pull_request:
+    branches: ['main']
+
+  # 2. Chạy theo yêu cầu thủ công (Actions -> Deploy to Vercel -> Run workflow)
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Môi trường đích trên Vercel (production / preview)'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - preview
+      skip_ci:
+        description: 'Bỏ qua bước kiểm tra build trước khi deploy'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: vercel-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify Build & TypeScript
+    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.skip_ci }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            opengym/frontend/package-lock.json
+
+      - name: Install dependencies (Coby LIFE + openGym)
+        run: |
+          npm ci
+          npm --prefix opengym/frontend ci
+
+      - name: Verify openGym + Coby LIFE TypeScript & Vite build
+        env:
+          SKIP_OPENGYM_MEDIA: '1'
+        run: npm run build:vercel
+
+  deploy:
+    name: Deploy to Vercel (${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production') || 'preview' }})
+    needs: [verify]
+    if: >-
+      always() &&
+      !cancelled() &&
+      (needs.verify.result == 'success' || needs.verify.result == 'skipped') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment:
+      name: vercel-${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production') || 'preview' }}
+      url: ${{ steps.vercel_deploy.outputs.url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Deploy to Vercel
+        id: vercel_deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+          TARGET_ENV: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production') || 'preview' }}
+        run: |
+          set -euo pipefail
+
+          # Chế độ 1 (Khuyên dùng): Dùng Vercel CLI gửi gói mã nguồn nén (.tgz) và build trên hạ tầng Vercel
+          if [ -n "${VERCEL_TOKEN:-}" ] && [ -n "${VERCEL_ORG_ID:-}" ] && [ -n "${VERCEL_PROJECT_ID:-}" ]; then
+            echo "Installing Vercel CLI..."
+            npm install --global vercel@latest
+
+            BRANCH_NAME="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+            PROD_FLAG=""
+            if [ "$TARGET_ENV" = "production" ]; then
+              PROD_FLAG="--prod"
+            fi
+
+            echo "Triggering Vercel $TARGET_ENV deployment for branch '$BRANCH_NAME'..."
+            DEPLOY_URL=$(vercel deploy $PROD_FLAG --yes --archive=tgz \
+              --meta githubDeployment=1 \
+              --meta githubCommitRef="$BRANCH_NAME" \
+              --meta githubCommitSha="$GITHUB_SHA")
+
+            echo "Deployed URL: $DEPLOY_URL"
+            echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+
+            {
+              echo "### 🚀 Vercel Deployment Succeeded"
+              echo "- **Environment:** \`$TARGET_ENV\`"
+              echo "- **Branch:** \`$BRANCH_NAME\`"
+              echo "- **Commit:** \`${GITHUB_SHA::7}\`"
+              echo "- **Live URL:** [$DEPLOY_URL]($DEPLOY_URL)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Chế độ 2 (1 Secret duy nhất): Kích hoạt qua Vercel Deploy Hook URL
+          if [ -n "${VERCEL_DEPLOY_HOOK_URL:-}" ]; then
+            echo "Triggering Vercel Deploy Hook..."
+            curl -fsSL -X POST "$VERCEL_DEPLOY_HOOK_URL"
+            echo ""
+            {
+              echo "### 🚀 Vercel Deploy Hook Triggered"
+              echo "- Đã gửi yêu cầu build tới Vercel qua \`VERCEL_DEPLOY_HOOK_URL\`."
+              echo "- Kiểm tra tiến trình trực tiếp trên Vercel Dashboard của project."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Chưa cấu hình GitHub Secrets
+          {
+            echo "### ⚠️ Thiếu GitHub Secrets cho Vercel"
+            echo "Vui lòng vào **Settings → Secrets and variables → Actions → New repository secret** và thêm **1 trong 2 cách** sau:"
+            echo ""
+            echo "#### Cách 1: Đầy đủ Production + Preview + Link trả về (Khuyên dùng)"
+            echo "- \`VERCEL_TOKEN\`: Tạo tại https://vercel.com/account/tokens"
+            echo "- \`VERCEL_ORG_ID\`: Lấy từ \`orgId\` trong \`.vercel/project.json\` (sau khi chạy \`npx vercel link\`) hoặc Vercel Account/Team Settings"
+            echo "- \`VERCEL_PROJECT_ID\`: Lấy từ \`projectId\` trong \`.vercel/project.json\` hoặc Vercel Project Settings → General"
+            echo ""
+            echo "#### Cách 2: Nhanh gọn chỉ với 1 Secret"
+            echo "- \`VERCEL_DEPLOY_HOOK_URL\`: Tạo tại Vercel Project → **Settings → Git → Deploy Hooks**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::error::Chưa cấu hình Vercel Secrets (VERCEL_TOKEN + VERCEL_ORG_ID + VERCEL_PROJECT_ID hoặc VERCEL_DEPLOY_HOOK_URL) trong GitHub Actions Secrets."
+          exit 1
