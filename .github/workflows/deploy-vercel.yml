@@ -57,7 +57,7 @@ jobs:
         run: npm run build:vercel
 
   deploy:
-    name: Deploy to Vercel (${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production') || 'preview' }})
+    name: Deploy to Vercel (${{ github.event.inputs.environment || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production') || 'preview' }})
     needs: [verify]
     if: >-
       always() &&
@@ -66,7 +66,7 @@ jobs:
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment:
-      name: vercel-${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production') || 'preview' }}
+      name: vercel-${{ github.event.inputs.environment || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production') || 'preview' }}
       url: ${{ steps.vercel_deploy.outputs.url }}
     steps:
       - name: Checkout repository
@@ -84,7 +84,7 @@ jobs:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
-          TARGET_ENV: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production') || 'preview' }}
+          TARGET_ENV: ${{ github.event.inputs.environment || (github.event_name == 'push' && github.ref == 'refs/heads/main' && 'production') || 'preview' }}
         run: |
           set -euo pipefail
 
@@ -133,8 +133,10 @@ jobs:
 
           # Chưa cấu hình GitHub Secrets
           {
-            echo "### ⚠️ Thiếu GitHub Secrets cho Vercel"
-            echo "Vui lòng vào **Settings → Secrets and variables → Actions → New repository secret** và thêm **1 trong 2 cách** sau:"
+            echo "### ℹ️ Chưa cấu hình GitHub Secrets cho Vercel CLI / Deploy Hook"
+            echo "Nếu bạn đã kết nối repo trực tiếp trên **Vercel Dashboard**, Vercel vẫn tự động build & deploy từ \`vercel.json\`."
+            echo ""
+            echo "Để kích hoạt deploy trực tiếp từ GitHub Actions, vào **Settings → Secrets and variables → Actions → New repository secret** và thêm **1 trong 2 cách**:"
             echo ""
             echo "#### Cách 1: Đầy đủ Production + Preview + Link trả về (Khuyên dùng)"
             echo "- \`VERCEL_TOKEN\`: Tạo tại https://vercel.com/account/tokens"
@@ -145,5 +147,9 @@ jobs:
             echo "- \`VERCEL_DEPLOY_HOOK_URL\`: Tạo tại Vercel Project → **Settings → Git → Deploy Hooks**"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "::error::Chưa cấu hình Vercel Secrets (VERCEL_TOKEN + VERCEL_ORG_ID + VERCEL_PROJECT_ID hoặc VERCEL_DEPLOY_HOOK_URL) trong GitHub Actions Secrets."
-          exit 1
+          if [ "${GITHUB_EVENT_NAME:-}" = "workflow_dispatch" ]; then
+            echo "::error::Chưa cấu hình Vercel Secrets (VERCEL_TOKEN + VERCEL_ORG_ID + VERCEL_PROJECT_ID hoặc VERCEL_DEPLOY_HOOK_URL) trong GitHub Actions Secrets."
+            exit 1
+          fi
+
+          echo "::notice::Bỏ qua bước CLI deploy vì chưa thiết lập Vercel Secrets trên GitHub."
