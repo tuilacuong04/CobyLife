@@ -259,3 +259,40 @@ export const IconCopy: React.FC<IconProps> = ({ size = 15, style, className }) =
     <path d="M5 15H4.5A2.5 2.5 0 0 1 2 12.5v-8A2.5 2.5 0 0 1 4.5 2h8A2.5 2.5 0 0 1 15 4.5V5" />
   </svg>
 );
+
+export const IconMail: React.FC<IconProps> = ({ size = 16, style, className }) => (
+  <svg {...base(size, style, className)}>
+    <rect x="3" y="5" width="18" height="14" rx="2.5" />
+    <path d="m3.5 7 8.5 6 8.5-6" />
+  </svg>
+);
+
+export const IconSparkles: React.FC<IconProps> = ({ size = 15, style, className }) => (
+  <svg {...base(size, style, className)}>
+    <path d="m12 3 1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3Z" />
+    <path d="M19 16v4M17 18h4M5 16v3M3.5 17.5h3" />
+  </svg>
+);
+
+export const IconEdit: React.FC<IconProps> = ({ size = 15, style, className }) => (
+  <svg {...base(size, style, className)}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5Z" />
+  </svg>
+);
+
+export const IconAlert: React.FC<IconProps> = ({ size = 15, style, className }) => (
+  <svg {...base(size, style, className)}>
+    <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+    <path d="M12 9v4M12 17h.01" />
+  </svg>
+);
+
+export const IconSplit: React.FC<IconProps> = ({ size = 15, style, className }) => (
+  <svg {...base(size, style, className)}>
+    <path d="M16 3h5v5M8 3H3v5" />
+    <path d="M12 22v-8.3a4 4 0 0 0-1.17-2.83L3 3" />
+    <path d="m15 9 6-6" />
+  </svg>
+);
+

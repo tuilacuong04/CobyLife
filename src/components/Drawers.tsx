@@ -25,6 +25,7 @@ export const Drawers: React.FC = () => {
     deleteSubtask,
     updateTransaction,
     deleteTransaction,
+    settleSplitTransaction,
     pushToast,
   } = useApp();
 
@@ -265,13 +266,22 @@ export const Drawers: React.FC = () => {
       }
     };
 
+    const splitOwed =
+      tx.split && tx.split.status === 'open'
+        ? Math.max(0, tx.split.reimbursable - tx.split.repaidAmount)
+        : 0;
+
     return (
       <AnimatedDrawer open onClose={closeDrawer} label="Transaction details">
         <div className="drawer__head">
           <div>
-            <div className="drawer__sub">Edit transaction</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <span className="drawer__sub">Edit transaction</span>
+              {tx.source === 'gmail' && <span className="pill pill--sky">Gmail Synced</span>}
+              {tx.isAdjustment && <span className="pill pill--muted">Reconciliation</span>}
+            </div>
             <h2 className="drawer__title">
-              {tx.type === 'expense' ? '-' : tx.type === 'income' ? '+' : ''}
+              {tx.type === 'expense' ? '-' : tx.type === 'income' ? '+' : '⇄ '}
               {formatMoney(tx.amount, currency)}
             </h2>
           </div>
@@ -281,6 +291,40 @@ export const Drawers: React.FC = () => {
         </div>
 
         <div className="drawer__body">
+          {tx.split && (
+            <div
+              className="drawer-section"
+              style={{
+                padding: '12px 14px',
+                borderRadius: 14,
+                background: 'var(--well)',
+                border: '1px solid var(--line)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>
+                    Split Bill · My share: {formatMoney(tx.split.myShare, currency)}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                    {tx.split.status === 'settled'
+                      ? `Settled (${formatMoney(tx.split.reimbursable, currency)} repaid)`
+                      : `Owed back: ${formatMoney(splitOwed, currency)}${tx.split.counterparty ? ` · ${tx.split.counterparty}` : ''}`}
+                  </div>
+                </div>
+                {tx.split.status === 'open' && splitOwed > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn--primary btn--sm"
+                    onClick={() => settleSplitTransaction(tx.id)}
+                  >
+                    Mark Repaid
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="drawer-section">
             <div className="drawer-section__title">Type</div>
             <div className="seg" style={{ width: '100%' }}>
@@ -320,7 +364,7 @@ export const Drawers: React.FC = () => {
           <div className="drawer-section">
             <div className="form-stack">
               <label className="field">
-                <span className="field__label">Amount (supports 50k, 1.5m)</span>
+                <span className="field__label">Amount (supports 50k, 1,500k, 45k+15k)</span>
                 <input
                   className="input"
                   value={txAmountInput}
@@ -422,7 +466,7 @@ export const Drawers: React.FC = () => {
               closeDrawer();
             }}
           >
-            Save & Close
+            Save &amp; Close
           </button>
         </div>
       </AnimatedDrawer>

@@ -1,9 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DrawerState,
+  FinanceAutoRule,
+  FinanceCategory,
+  FinanceRecurringBill,
   FinanceTransaction,
   FinanceWallet,
   FutureModuleIdea,
+  GmailInboxItem,
   ModalState,
   ModuleId,
   PageId,
@@ -24,6 +28,7 @@ import {
   setLocalUpdatedAt,
 } from '../utils/storage';
 import {
+  ackSupabaseInboxItems,
   CloudDbConfig,
   CloudSyncStatus,
   DEFAULT_CLOUD_CONFIG,
@@ -31,11 +36,19 @@ import {
   loadCloudConfig,
   loadLocalIdbSnapshot,
   pullFromCloudDb,
+  pullSupabaseInboxItems,
   pushToCloudDb,
   saveCloudConfigToStorage,
   saveLocalIdbSnapshot,
+  triggerGasWebAppSync,
   UnifiedVaultPayload,
 } from '../utils/cloudDb';
+import { buildSmartInboxItems, currentCycleKey } from '../utils/financeEngine';
+import {
+  createSampleGmailDemoPayloads,
+  parseVietnameseGmailAlert,
+  RawGmailPayloadItem,
+} from '../utils/vnGmailParser';
 import { addDaysIso, localIsoDate } from '../utils/format';
 import { dur, gsap, isMobileViewport, spawnFloatUp } from '../utils/motion';
 
@@ -107,6 +120,21 @@ function uid(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`;
 }
 
+export interface ReconcileOptions {
+  walletId: string;
+  targetBalance: number;
+  mode: 'silent' | 'expense' | 'income' | 'transfer';
+  categoryId?: string;
+  toWalletId?: string;
+  note?: string;
+}
+
+export interface ApproveInboxOptions {
+  splitMyShare?: number;
+  splitCounterparty?: string;
+  saveRule?: boolean;
+}
+
 interface AppContextValue {
   state: PersistedAppState;
   route: RouteState;
@@ -143,7 +171,7 @@ interface AppContextValue {
   toggleSubtask: (taskId: string, subtaskId: string) => void;
   deleteSubtask: (taskId: string, subtaskId: string) => void;
 
-  // Finance CRUD
+  // Finance Core CRUD
   walletBalances: Record<string, number>;
   createTransaction: (input: Omit<FinanceTransaction, 'id'>) => FinanceTransaction;
   updateTransaction: (id: string, patch: Partial<FinanceTransaction>) => void;
@@ -151,7 +179,33 @@ interface AppContextValue {
   createWallet: (input: Omit<FinanceWallet, 'id'>) => FinanceWallet;
   updateWallet: (id: string, patch: Partial<FinanceWallet>) => void;
   deleteWallet: (id: string) => void;
+  reconcileWalletBalance: (opts: ReconcileOptions) => void;
   setCategoryBudget: (categoryId: string, monthlyLimit: number) => void;
+
+  // Finance Categories, Rules, Bills, Payday Cycle & Split Reimbursements
+  createCategory: (input: Omit<FinanceCategory, 'id'>) => FinanceCategory;
+  updateCategory: (id: string, patch: Partial<FinanceCategory>) => void;
+  deleteCategory: (id: string) => void;
+  saveAutoRule: (rule: Omit<FinanceAutoRule, 'id'> & { id?: string }) => FinanceAutoRule;
+  deleteAutoRule: (id: string) => void;
+  saveRecurringBill: (bill: Omit<FinanceRecurringBill, 'id'> & { id?: string }) => FinanceRecurringBill;
+  deleteRecurringBill: (id: string) => void;
+  markBillPaid: (billId: string, cycleKey?: string) => void;
+  setPaydayDay: (day: number) => void;
+  setUsdVndRate: (rate: number) => void;
+  settleSplitTransaction: (txId: string, receivedAmount?: number, walletId?: string) => void;
+
+  // Gmail Sync & Finance Review Inbox
+  gmailSyncing: boolean;
+  lastGmailSyncAt: string | null;
+  syncGmailInbox: (opts?: { triggerGas?: boolean; silent?: boolean }) => Promise<void>;
+  importRawGmailText: (rawText: string) => boolean;
+  loadSampleGmailDemo: () => void;
+  updateInboxItem: (id: string, patch: Partial<GmailInboxItem>) => void;
+  approveInboxItem: (id: string, opts?: ApproveInboxOptions) => void;
+  approveAllMatchedInbox: () => void;
+  ignoreInboxItem: (id: string) => void;
+  updateCloudConfigPatch: (patch: Partial<CloudDbConfig>) => void;
 
   // Future Module Ideas
   addFutureIdea: (input: Omit<FutureModuleIdea, 'id'>) => void;
@@ -184,6 +238,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [modal, setModal] = useState<ModalState>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [cloudConfig, setCloudConfig] = useState<CloudDbConfig>(() => loadCloudConfig());
+  const [gmailSyncing, setGmailSyncing] = useState(false);
+  const [lastGmailSyncAt, setLastGmailSyncAt] = useState<string | null>(null);
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>(() => {
     const cfg = loadCloudConfig();
     return {
@@ -206,6 +262,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const pushTimerRef = useRef<number | null>(null);
   const lastFocusPullRef = useRef(0);
 
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const pushToast = useCallback(
+    (message: string, undo?: () => void) => {
+      const id = uid('toast');
+      setToasts((prev) => [...prev.slice(-2), { id, message, undo }]);
+      window.setTimeout(() => dismissToast(id), undo ? 5500 : 3200);
+    },
+    [dismissToast]
+  );
+
   const buildVaultPayload = useCallback((updatedAt?: string): UnifiedVaultPayload => {
     return {
       format: 'coby-life-backup-v1',
@@ -226,6 +295,81 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     void saveLocalIdbSnapshot(payload);
   }, []);
+
+  const ingestRawGmailPayloads = useCallback((rawItems: RawGmailPayloadItem[]): number => {
+    if (!rawItems || rawItems.length === 0) return 0;
+    const usdRate = stateRef.current.finance.usdVndRate || 25500;
+    const parsedAlerts = rawItems
+      .map((item) => parseVietnameseGmailAlert(item, usdRate))
+      .filter((a): a is NonNullable<typeof a> => a !== null);
+
+    if (parsedAlerts.length === 0) return 0;
+
+    let addedCount = 0;
+    setState((prev) => {
+      const built = buildSmartInboxItems(parsedAlerts, prev.finance, uid);
+      addedCount = built.length;
+      if (built.length === 0) return prev;
+      return {
+        ...prev,
+        finance: {
+          ...prev.finance,
+          inbox: [...built, ...prev.finance.inbox],
+        },
+      };
+    });
+    return addedCount;
+  }, []);
+
+  const syncGmailInbox = useCallback(
+    async (opts?: { triggerGas?: boolean; silent?: boolean }) => {
+      const cfg = cloudConfigRef.current;
+      const hasSupabase = cfg.provider === 'supabase' && isCloudConfigValid(cfg);
+      const hasGasUrl = Boolean(cfg.gmailGasExecUrl?.trim() && cfg.gmailTriggerSecret?.trim());
+
+      if (!hasSupabase && !hasGasUrl) {
+        if (!opts?.silent) {
+          setModal({ kind: 'gmail-setup' });
+        }
+        return;
+      }
+
+      setGmailSyncing(true);
+      try {
+        let added = 0;
+
+        if (opts?.triggerGas && hasGasUrl) {
+          const gasRes = await triggerGasWebAppSync(cfg);
+          if (!gasRes.ok && !opts?.silent) {
+            pushToast(gasRes.error || 'Apps Script trigger failed');
+          } else if (gasRes.directItems && gasRes.directItems.length > 0) {
+            added += ingestRawGmailPayloads(gasRes.directItems);
+          }
+        }
+
+        if (hasSupabase) {
+          const inboxRes = await pullSupabaseInboxItems(cfg);
+          if (inboxRes.ok && inboxRes.items.length > 0) {
+            added += ingestRawGmailPayloads(inboxRes.items);
+          } else if (inboxRes.needsSqlUpgrade && !opts?.silent && opts?.triggerGas) {
+            pushToast('Run the updated Supabase SQL in Gmail Sync Setup to enable coby_finance_inbox');
+          }
+        }
+
+        setLastGmailSyncAt(new Date().toISOString());
+        if (!opts?.silent) {
+          if (added > 0) {
+            pushToast(`Synced ${added} new Gmail transaction${added > 1 ? 's' : ''} to Inbox`);
+          } else {
+            pushToast('Gmail Inbox is up to date');
+          }
+        }
+      } finally {
+        setGmailSyncing(false);
+      }
+    },
+    [ingestRawGmailPayloads, pushToast]
+  );
 
   const scheduleCloudPush = useCallback(() => {
     const cfg = cloudConfigRef.current;
@@ -281,7 +425,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     scheduleCloudPush();
   }, [state, buildVaultPayload, scheduleCloudPush]);
 
-  // Initial IndexedDB recovery & Cloud DB sync on mount
+  // Initial IndexedDB recovery & Cloud DB + Gmail Inbox pull on mount
   useEffect(() => {
     let active = true;
     (async () => {
@@ -318,6 +462,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setCloudConfig(nextCfg);
           }
         }
+        // Also drain any pending Gmail items waiting in coby_finance_inbox (~150ms)
+        if (cfg.provider === 'supabase') {
+          const inboxRes = await pullSupabaseInboxItems(cfg);
+          if (active && inboxRes.ok && inboxRes.items.length > 0) {
+            ingestRawGmailPayloads(inboxRes.items);
+          }
+        }
         setCloudStatus((prev) => ({
           ...prev,
           state: 'synced',
@@ -342,13 +493,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         window.clearTimeout(pushTimerRef.current);
       }
     };
-  }, [applyVaultPayload, buildVaultPayload]);
+  }, [applyVaultPayload, buildVaultPayload, ingestRawGmailPayloads]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', state.settings.theme);
   }, [state.settings.theme]);
 
-  // Auto-pull newer Cloud DB changes on window focus
+  // Auto-pull newer Cloud DB & pending Gmail Inbox items on window focus
   useEffect(() => {
     const onFocus = () => {
       const cfg = cloudConfigRef.current;
@@ -356,10 +507,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (cfg.autoSync && isCloudConfigValid(cfg) && now - lastFocusPullRef.current > 15000) {
         lastFocusPullRef.current = now;
         void pullFromCloudDb(cfg)
-          .then((remote) => {
+          .then(async (remote) => {
             const localTs = getLocalUpdatedAt();
             if (remote?.payload && remote.updatedAt && (!localTs || remote.updatedAt > localTs)) {
               applyVaultPayload(remote.payload);
+            }
+            if (cfg.provider === 'supabase') {
+              const inboxRes = await pullSupabaseInboxItems(cfg);
+              if (inboxRes.ok && inboxRes.items.length > 0) {
+                ingestRawGmailPayloads(inboxRes.items);
+              }
             }
             setCloudStatus((prev) => ({
               ...prev,
@@ -376,7 +533,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [applyVaultPayload]);
+  }, [applyVaultPayload, ingestRawGmailPayloads]);
 
   useEffect(() => {
     const onPop = () => {
@@ -385,19 +542,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
-
-  const dismissToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  const pushToast = useCallback(
-    (message: string, undo?: () => void) => {
-      const id = uid('toast');
-      setToasts((prev) => [...prev.slice(-2), { id, message, undo }]);
-      window.setTimeout(() => dismissToast(id), undo ? 5500 : 3200);
-    },
-    [dismissToast]
-  );
 
   const navigate = useCallback((page: PageId, sub?: string, query?: Record<string, string>) => {
     const prev = routeRef.current;
@@ -552,7 +696,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : t
         );
 
-        // If completing a recurring task, automatically schedule next occurrence
         if (status === 'done' && existing.recurrence !== 'none' && existing.dueDate) {
           const delta =
             existing.recurrence === 'daily' ? 1 : existing.recurrence === 'weekly' ? 7 : 30;
@@ -660,7 +803,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   }, []);
 
-  // Finance CRUD & Computed Balances
+  /* ========================== Finance CRUD & Computed Balances ========================== */
+
+  // Fixed phantom-key bug: only accumulate transactions for existing wallet IDs
   const walletBalances = useMemo(() => {
     const map: Record<string, number> = {};
     for (const w of state.finance.wallets) {
@@ -668,13 +813,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     for (const tx of state.finance.transactions) {
       if (tx.type === 'income') {
-        map[tx.walletId] = (map[tx.walletId] ?? 0) + tx.amount;
+        if (tx.walletId in map) map[tx.walletId] += tx.amount;
       } else if (tx.type === 'expense') {
-        map[tx.walletId] = (map[tx.walletId] ?? 0) - tx.amount;
+        if (tx.walletId in map) map[tx.walletId] -= tx.amount;
       } else if (tx.type === 'transfer') {
-        map[tx.walletId] = (map[tx.walletId] ?? 0) - tx.amount;
-        if (tx.toWalletId) {
-          map[tx.toWalletId] = (map[tx.toWalletId] ?? 0) + tx.amount;
+        if (tx.walletId in map) map[tx.walletId] -= tx.amount;
+        if (tx.toWalletId && tx.toWalletId in map) {
+          map[tx.toWalletId] += tx.amount;
         }
       }
     }
@@ -683,7 +828,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const createTransaction = useCallback(
     (input: Omit<FinanceTransaction, 'id'>) => {
-      const tx: FinanceTransaction = { ...input, id: uid('tx') };
+      const tx: FinanceTransaction = {
+        ...input,
+        id: uid('tx'),
+        timestamp: input.timestamp || new Date().toISOString(),
+      };
       setState((prev) => ({
         ...prev,
         finance: {
@@ -692,8 +841,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         },
       }));
       const label =
-        tx.type === 'expense' ? 'Expense' : tx.type === 'income' ? 'Income' : 'Transfer';
-      pushToast(`${label} recorded`);
+        tx.isAdjustment
+          ? 'Balance reconciled'
+          : tx.type === 'expense'
+            ? 'Expense recorded'
+            : tx.type === 'income'
+              ? 'Income recorded'
+              : 'Transfer recorded';
+      pushToast(label, () => {
+        setState((prev) => ({
+          ...prev,
+          finance: {
+            ...prev.finance,
+            transactions: prev.finance.transactions.filter((t) => t.id !== tx.id),
+          },
+        }));
+      });
       return tx;
     },
     [pushToast]
@@ -752,25 +915,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [pushToast]
   );
 
-  const updateWallet = useCallback((id: string, patch: Partial<FinanceWallet>) => {
-    setState((prev) => ({
-      ...prev,
-      finance: {
-        ...prev.finance,
-        wallets: prev.finance.wallets.map((w) => (w.id === id ? { ...w, ...patch } : w)),
-      },
-    }));
-  }, []);
+  const updateWallet = useCallback(
+    (id: string, patch: Partial<FinanceWallet>) => {
+      setState((prev) => ({
+        ...prev,
+        finance: {
+          ...prev.finance,
+          wallets: prev.finance.wallets.map((w) => (w.id === id ? { ...w, ...patch } : w)),
+        },
+      }));
+      pushToast('Wallet updated');
+    },
+    [pushToast]
+  );
 
   const deleteWallet = useCallback(
     (id: string) => {
       const existing = stateRef.current.finance.wallets.find((w) => w.id === id);
-      if (!existing) return;
+      if (!existing || stateRef.current.finance.wallets.length <= 1) return;
+      const relatedTxs = stateRef.current.finance.transactions.filter(
+        (t) => t.walletId === id || t.toWalletId === id
+      );
       setState((prev) => ({
         ...prev,
         finance: {
           ...prev.finance,
           wallets: prev.finance.wallets.filter((w) => w.id !== id),
+          transactions: prev.finance.transactions.filter(
+            (t) => t.walletId !== id && t.toWalletId !== id
+          ),
         },
       }));
       pushToast(`Deleted wallet "${existing.name}"`, () => {
@@ -779,11 +952,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           finance: {
             ...prev.finance,
             wallets: [...prev.finance.wallets, existing],
+            transactions: [...relatedTxs, ...prev.finance.transactions],
           },
         }));
       });
     },
     [pushToast]
+  );
+
+  const reconcileWalletBalance = useCallback(
+    (opts: ReconcileOptions) => {
+      const currentBal = walletBalances[opts.walletId] ?? 0;
+      const diff = Math.round(opts.targetBalance - currentBal);
+      const nowIso = new Date().toISOString();
+
+      if (Math.abs(diff) < 1) {
+        setState((prev) => ({
+          ...prev,
+          finance: {
+            ...prev.finance,
+            wallets: prev.finance.wallets.map((w) =>
+              w.id === opts.walletId
+                ? { ...w, lastReportedBalance: opts.targetBalance, lastReportedAt: nowIso }
+                : w
+            ),
+          },
+        }));
+        pushToast('Wallet balance confirmed in sync');
+        return;
+      }
+
+      const absDiff = Math.abs(diff);
+      const defaultExpCat =
+        opts.categoryId ||
+        stateRef.current.finance.categories.find((c) => c.kind === 'expense')?.id ||
+        'cat-other-exp';
+      const defaultIncCat =
+        opts.categoryId ||
+        stateRef.current.finance.categories.find((c) => c.kind === 'income')?.id ||
+        'cat-bonus';
+
+      let tx: FinanceTransaction;
+      if (opts.mode === 'transfer' && opts.toWalletId && diff < 0) {
+        tx = {
+          id: uid('tx'),
+          type: 'transfer',
+          amount: absDiff,
+          categoryId: defaultExpCat,
+          walletId: opts.walletId,
+          toWalletId: opts.toWalletId,
+          date: localIsoDate(),
+          timestamp: nowIso,
+          note: opts.note?.trim() || 'Wallet transfer / ATM cash withdrawal',
+          source: 'reconcile',
+        };
+      } else if (opts.mode === 'silent') {
+        tx = {
+          id: uid('tx'),
+          type: diff > 0 ? 'income' : 'expense',
+          amount: absDiff,
+          categoryId: diff > 0 ? defaultIncCat : defaultExpCat,
+          walletId: opts.walletId,
+          date: localIsoDate(),
+          timestamp: nowIso,
+          note: opts.note?.trim() || 'Balance reconciliation adjustment',
+          source: 'reconcile',
+          isAdjustment: true,
+        };
+      } else {
+        const isOut = diff < 0;
+        tx = {
+          id: uid('tx'),
+          type: isOut ? 'expense' : 'income',
+          amount: absDiff,
+          categoryId: isOut ? defaultExpCat : defaultIncCat,
+          walletId: opts.walletId,
+          date: localIsoDate(),
+          timestamp: nowIso,
+          note: opts.note?.trim() || (isOut ? 'Unlogged pocket / QR expenses' : 'Unlogged balance credit'),
+          source: 'reconcile',
+        };
+      }
+
+      setState((prev) => ({
+        ...prev,
+        finance: {
+          ...prev.finance,
+          transactions: [tx, ...prev.finance.transactions],
+          wallets: prev.finance.wallets.map((w) =>
+            w.id === opts.walletId
+              ? { ...w, lastReportedBalance: opts.targetBalance, lastReportedAt: nowIso }
+              : w
+          ),
+        },
+      }));
+      pushToast('Wallet balance reconciled');
+    },
+    [walletBalances, pushToast]
   );
 
   const setCategoryBudget = useCallback(
@@ -804,6 +1069,559 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     [pushToast]
   );
+
+  /* ========================== Categories, Rules, Bills & Split CRUD ========================== */
+
+  const createCategory = useCallback(
+    (input: Omit<FinanceCategory, 'id'>) => {
+      const cat: FinanceCategory = { ...input, id: uid('cat') };
+      setState((prev) => ({
+        ...prev,
+        finance: {
+          ...prev.finance,
+          categories: [...prev.finance.categories, cat],
+        },
+      }));
+      pushToast(`Added category "${cat.name}"`);
+      return cat;
+    },
+    [pushToast]
+  );
+
+  const updateCategory = useCallback((id: string, patch: Partial<FinanceCategory>) => {
+    setState((prev) => ({
+      ...prev,
+      finance: {
+        ...prev.finance,
+        categories: prev.finance.categories.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+      },
+    }));
+  }, []);
+
+  const deleteCategory = useCallback(
+    (id: string) => {
+      const target = stateRef.current.finance.categories.find((c) => c.id === id);
+      if (!target) return;
+      const sameKind = stateRef.current.finance.categories.filter(
+        (c) => c.kind === target.kind && c.id !== id
+      );
+      if (sameKind.length === 0) {
+        pushToast('Keep at least one category of each type');
+        return;
+      }
+      const fallbackCatId = sameKind[0].id;
+      setState((prev) => ({
+        ...prev,
+        finance: {
+          ...prev.finance,
+          categories: prev.finance.categories.filter((c) => c.id !== id),
+          budgets: prev.finance.budgets.filter((b) => b.categoryId !== id),
+          transactions: prev.finance.transactions.map((tx) =>
+            tx.categoryId === id ? { ...tx, categoryId: fallbackCatId } : tx
+          ),
+        },
+      }));
+      pushToast(`Removed category "${target.name}"`);
+    },
+    [pushToast]
+  );
+
+  const saveAutoRule = useCallback(
+    (input: Omit<FinanceAutoRule, 'id'> & { id?: string }) => {
+      const rule: FinanceAutoRule = {
+        ...input,
+        id: input.id || uid('rule'),
+      };
+      setState((prev) => {
+        const exists = prev.finance.rules.some((r) => r.id === rule.id);
+        const nextRules = exists
+          ? prev.finance.rules.map((r) => (r.id === rule.id ? rule : r))
+          : [rule, ...prev.finance.rules];
+
+        // Retro-apply new/updated rule onto matching pending Inbox items!
+        const pat = rule.pattern.trim().toUpperCase();
+        const nextInbox = prev.finance.inbox.map((item) => {
+          if (item.status !== 'pending' || !pat) return item;
+          const hay = `${item.cleanMerchant} ${item.cleanMemo} ${item.sender}`.toUpperCase();
+          if (!hay.includes(pat)) return item;
+          if (rule.direction && rule.direction !== item.direction) return item;
+          return {
+            ...item,
+            matchedRuleId: rule.id,
+            suggestedCategoryId: rule.categoryId || item.suggestedCategoryId,
+            suggestedWalletId: rule.walletId || item.suggestedWalletId,
+            cleanMerchant: rule.renameMerchantTo || item.cleanMerchant,
+            suggestedType: rule.txType || item.suggestedType,
+            suggestedToWalletId:
+              rule.txType === 'transfer' ? rule.toWalletId || item.suggestedToWalletId : item.suggestedToWalletId,
+          };
+        });
+
+        return {
+          ...prev,
+          finance: {
+            ...prev.finance,
+            rules: nextRules,
+            inbox: nextInbox,
+          },
+        };
+      });
+      pushToast(`Saved auto-rule for "${rule.pattern}"`);
+      return rule;
+    },
+    [pushToast]
+  );
+
+  const deleteAutoRule = useCallback(
+    (id: string) => {
+      setState((prev) => ({
+        ...prev,
+        finance: {
+          ...prev.finance,
+          rules: prev.finance.rules.filter((r) => r.id !== id),
+        },
+      }));
+      pushToast('Rule deleted');
+    },
+    [pushToast]
+  );
+
+  const saveRecurringBill = useCallback(
+    (input: Omit<FinanceRecurringBill, 'id'> & { id?: string }) => {
+      const bill: FinanceRecurringBill = {
+        ...input,
+        id: input.id || uid('bill'),
+      };
+      setState((prev) => {
+        const exists = prev.finance.recurringBills.some((b) => b.id === bill.id);
+        return {
+          ...prev,
+          finance: {
+            ...prev.finance,
+            recurringBills: exists
+              ? prev.finance.recurringBills.map((b) => (b.id === bill.id ? bill : b))
+              : [...prev.finance.recurringBills, bill],
+          },
+        };
+      });
+      pushToast(`Saved recurring bill "${bill.name}"`);
+      return bill;
+    },
+    [pushToast]
+  );
+
+  const deleteRecurringBill = useCallback(
+    (id: string) => {
+      setState((prev) => ({
+        ...prev,
+        finance: {
+          ...prev.finance,
+          recurringBills: prev.finance.recurringBills.filter((b) => b.id !== id),
+        },
+      }));
+      pushToast('Recurring bill removed');
+    },
+    [pushToast]
+  );
+
+  const markBillPaid = useCallback(
+    (billId: string, cycleKey?: string) => {
+      const bill = stateRef.current.finance.recurringBills.find((b) => b.id === billId);
+      if (!bill) return;
+      const targetCycle = cycleKey || currentCycleKey(new Date(), stateRef.current.finance.paydayDay || 1);
+      const usdRate = stateRef.current.finance.usdVndRate || 25500;
+      const amtVnd = bill.currency === 'USD' ? Math.round(bill.amount * usdRate) : bill.amount;
+
+      const tx: FinanceTransaction = {
+        id: uid('tx'),
+        type: 'expense',
+        amount: amtVnd,
+        categoryId: bill.categoryId,
+        walletId: bill.walletId,
+        date: localIsoDate(),
+        timestamp: new Date().toISOString(),
+        note: bill.name,
+        linkedBillId: bill.id,
+        originalAmount: bill.currency === 'USD' ? bill.amount : undefined,
+        originalCurrency: bill.currency === 'USD' ? 'USD' : undefined,
+      };
+
+      setState((prev) => ({
+        ...prev,
+        finance: {
+          ...prev.finance,
+          transactions: [tx, ...prev.finance.transactions],
+          recurringBills: prev.finance.recurringBills.map((b) =>
+            b.id === billId ? { ...b, lastPaidCycleKey: targetCycle } : b
+          ),
+        },
+      }));
+      pushToast(`Logged & marked "${bill.name}" paid`);
+    },
+    [pushToast]
+  );
+
+  const setPaydayDay = useCallback(
+    (day: number) => {
+      const clamped = Math.min(28, Math.max(1, Math.round(day || 1)));
+      setState((prev) => ({
+        ...prev,
+        finance: { ...prev.finance, paydayDay: clamped },
+      }));
+      pushToast(
+        clamped === 1
+          ? 'Billing cycle set to Calendar Month (1st)'
+          : `Billing cycle anchored to day ${clamped} of each month`
+      );
+    },
+    [pushToast]
+  );
+
+  const setUsdVndRate = useCallback((rate: number) => {
+    if (!Number.isFinite(rate) || rate <= 0) return;
+    setState((prev) => ({
+      ...prev,
+      finance: { ...prev.finance, usdVndRate: Math.round(rate) },
+    }));
+  }, []);
+
+  const settleSplitTransaction = useCallback(
+    (txId: string, receivedAmount?: number, targetWalletId?: string) => {
+      const parent = stateRef.current.finance.transactions.find((t) => t.id === txId);
+      if (!parent || !parent.split) return;
+      const remaining = Math.max(0, parent.split.reimbursable - parent.split.repaidAmount);
+      const repayAmt = receivedAmount && receivedAmount > 0 ? receivedAmount : remaining;
+      if (repayAmt <= 0) return;
+
+      const nextRepaid = Math.min(parent.split.reimbursable, parent.split.repaidAmount + repayAmt);
+      const isSettled = nextRepaid >= parent.split.reimbursable;
+      const incCat =
+        stateRef.current.finance.categories.find((c) => c.kind === 'income')?.id || 'cat-bonus';
+
+      const repaymentTx: FinanceTransaction = {
+        id: uid('tx'),
+        type: 'income',
+        amount: repayAmt,
+        categoryId: incCat,
+        walletId: targetWalletId || parent.walletId,
+        date: localIsoDate(),
+        timestamp: new Date().toISOString(),
+        note: `Split repayment: ${parent.note || 'Shared bill'}`,
+        repaymentForTxId: parent.id,
+      };
+
+      setState((prev) => ({
+        ...prev,
+        finance: {
+          ...prev.finance,
+          transactions: [
+            repaymentTx,
+            ...prev.finance.transactions.map((t) =>
+              t.id === parent.id && t.split
+                ? {
+                    ...t,
+                    split: {
+                      ...t.split,
+                      repaidAmount: nextRepaid,
+                      status: isSettled ? ('settled' as const) : ('open' as const),
+                      repaymentTxIds: [...(t.split.repaymentTxIds || []), repaymentTx.id],
+                    },
+                  }
+                : t
+            ),
+          ],
+        },
+      }));
+      pushToast(isSettled ? 'Split bill fully settled!' : 'Recorded partial split repayment');
+    },
+    [pushToast]
+  );
+
+  /* ========================== Gmail Inbox Actions ========================== */
+
+  const importRawGmailText = useCallback(
+    (rawText: string): boolean => {
+      const clean = rawText.trim();
+      if (!clean) return false;
+      const usdRate = stateRef.current.finance.usdVndRate || 25500;
+      const parsed = parseVietnameseGmailAlert(clean, usdRate);
+      if (!parsed) {
+        pushToast('No valid amount found in pasted text (skipping OTP/non-financial message)');
+        return false;
+      }
+      setState((prev) => {
+        const built = buildSmartInboxItems([parsed], prev.finance, uid);
+        if (built.length === 0) return prev;
+        return {
+          ...prev,
+          finance: {
+            ...prev.finance,
+            inbox: [...built, ...prev.finance.inbox],
+          },
+        };
+      });
+      pushToast(`Parsed "${parsed.cleanMerchant}" into Inbox`);
+      return true;
+    },
+    [pushToast]
+  );
+
+  const loadSampleGmailDemo = useCallback(() => {
+    const samples = createSampleGmailDemoPayloads();
+    const added = ingestRawGmailPayloads(samples);
+    if (added > 0) {
+      pushToast(`Loaded ${added} sample Vietnamese Gmail alerts into Inbox`);
+    } else {
+      pushToast('Sample Gmail alerts are already in your Inbox or Ledger');
+    }
+  }, [ingestRawGmailPayloads, pushToast]);
+
+  const updateInboxItem = useCallback((id: string, patch: Partial<GmailInboxItem>) => {
+    setState((prev) => ({
+      ...prev,
+      finance: {
+        ...prev.finance,
+        inbox: prev.finance.inbox.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+      },
+    }));
+  }, []);
+
+  const approveInboxItem = useCallback(
+    (id: string, opts?: ApproveInboxOptions) => {
+      const item = stateRef.current.finance.inbox.find((it) => it.id === id);
+      if (!item) return;
+
+      const cycleKey = currentCycleKey(new Date(), stateRef.current.finance.paydayDay || 1);
+      const txDate = item.receivedAt.slice(0, 10) || localIsoDate();
+
+      // Case 1: Merchant receipt enriching an existing card/bank transaction (zero double-counting!)
+      if (item.enrichedLedgerTxId) {
+        setState((prev) => ({
+          ...prev,
+          finance: {
+            ...prev.finance,
+            inbox: prev.finance.inbox.filter((it) => it.id !== id),
+            transactions: prev.finance.transactions.map((tx) =>
+              tx.id === item.enrichedLedgerTxId
+                ? {
+                    ...tx,
+                    categoryId: item.suggestedCategoryId || tx.categoryId,
+                    merchant: item.cleanMerchant,
+                    note: `${item.cleanMerchant} · ${item.cleanMemo}`.slice(0, 140),
+                    pairedGmailMessageId: item.messageId,
+                  }
+                : tx
+            ),
+          },
+        }));
+        void ackSupabaseInboxItems(cloudConfigRef.current, [item.messageId], 'imported');
+        pushToast(`Enriched existing transaction with "${item.cleanMerchant}" receipt`);
+        return;
+      }
+
+      // Build optional Split / Reimbursable metadata
+      const splitMeta =
+        item.suggestedType === 'expense' &&
+        opts?.splitMyShare !== undefined &&
+        opts.splitMyShare >= 0 &&
+        opts.splitMyShare < item.amount
+          ? {
+              myShare: Math.round(opts.splitMyShare),
+              reimbursable: Math.round(item.amount - opts.splitMyShare),
+              repaidAmount: 0,
+              counterparty: opts.splitCounterparty?.trim() || undefined,
+              status: 'open' as const,
+            }
+          : undefined;
+
+      const newTx: FinanceTransaction = {
+        id: uid('tx'),
+        type: item.suggestedType,
+        amount: item.amount,
+        categoryId: item.suggestedCategoryId,
+        walletId: item.suggestedWalletId,
+        toWalletId: item.suggestedType === 'transfer' ? item.suggestedToWalletId : undefined,
+        date: txDate,
+        timestamp: item.receivedAt,
+        note:
+          item.cleanMerchant && item.cleanMerchant !== 'Transaction'
+            ? `${item.cleanMerchant}${item.cleanMemo && item.cleanMemo !== item.cleanMerchant ? ` · ${item.cleanMemo}` : ''}`.slice(0, 140)
+            : item.cleanMemo,
+        merchant: item.cleanMerchant,
+        source: 'gmail',
+        gmailMessageId: item.messageId,
+        linkedBillId: item.matchedBillId,
+        repaymentForTxId: item.direction === 'in' ? item.matchedSplitTxId : undefined,
+        split: splitMeta,
+        originalAmount: item.originalAmount,
+        originalCurrency: item.originalCurrency,
+      };
+
+      setState((prev) => {
+        let nextTxs = [newTx, ...prev.finance.transactions];
+        // If settling an open split, update parent's repaidAmount
+        if (newTx.repaymentForTxId) {
+          nextTxs = nextTxs.map((t) => {
+            if (t.id !== newTx.repaymentForTxId || !t.split) return t;
+            const nextRepaid = Math.min(t.split.reimbursable, t.split.repaidAmount + newTx.amount);
+            return {
+              ...t,
+              split: {
+                ...t.split,
+                repaidAmount: nextRepaid,
+                status: nextRepaid >= t.split.reimbursable ? 'settled' : 'open',
+                repaymentTxIds: [...(t.split.repaymentTxIds || []), newTx.id],
+              },
+            };
+          });
+        }
+
+        const nextWallets = prev.finance.wallets.map((w) => {
+          if (
+            w.id === item.suggestedWalletId &&
+            typeof item.reportedBalanceAfter === 'number' &&
+            (!w.lastReportedAt || item.receivedAt >= w.lastReportedAt)
+          ) {
+            return {
+              ...w,
+              lastReportedBalance: item.reportedBalanceAfter,
+              lastReportedAt: item.receivedAt,
+            };
+          }
+          return w;
+        });
+
+        const nextBills = item.matchedBillId
+          ? prev.finance.recurringBills.map((b) =>
+              b.id === item.matchedBillId ? { ...b, lastPaidCycleKey: cycleKey } : b
+            )
+          : prev.finance.recurringBills;
+
+        let nextRules = prev.finance.rules;
+        if (opts?.saveRule && item.cleanMerchant && item.cleanMerchant !== 'Transaction') {
+          const rule: FinanceAutoRule = {
+            id: uid('rule'),
+            pattern: item.cleanMerchant.toUpperCase(),
+            direction: item.direction,
+            categoryId: item.suggestedCategoryId,
+            walletId: item.suggestedWalletId,
+            renameMerchantTo: item.cleanMerchant,
+            txType: item.suggestedType,
+            toWalletId: item.suggestedToWalletId,
+          };
+          nextRules = [rule, ...prev.finance.rules];
+        }
+
+        return {
+          ...prev,
+          finance: {
+            ...prev.finance,
+            inbox: prev.finance.inbox.filter((it) => it.id !== id),
+            transactions: nextTxs,
+            wallets: nextWallets,
+            recurringBills: nextBills,
+            rules: nextRules,
+          },
+        };
+      });
+
+      void ackSupabaseInboxItems(cloudConfigRef.current, [item.messageId], 'imported');
+      pushToast(`Approved "${item.cleanMerchant}"`, () => {
+        setState((prev) => ({
+          ...prev,
+          finance: {
+            ...prev.finance,
+            inbox: [item, ...prev.finance.inbox],
+            transactions: prev.finance.transactions.filter((t) => t.id !== newTx.id),
+          },
+        }));
+      });
+    },
+    [pushToast]
+  );
+
+  const approveAllMatchedInbox = useCallback(() => {
+    const pending = stateRef.current.finance.inbox.filter((it) => it.status === 'pending');
+    if (pending.length === 0) return;
+
+    const cycleKey = currentCycleKey(new Date(), stateRef.current.finance.paydayDay || 1);
+    const createdTxs: FinanceTransaction[] = [];
+    const ackIds: string[] = [];
+
+    for (const item of pending) {
+      ackIds.push(item.messageId);
+      if (item.enrichedLedgerTxId) continue;
+      createdTxs.push({
+        id: uid('tx'),
+        type: item.suggestedType,
+        amount: item.amount,
+        categoryId: item.suggestedCategoryId,
+        walletId: item.suggestedWalletId,
+        toWalletId: item.suggestedType === 'transfer' ? item.suggestedToWalletId : undefined,
+        date: item.receivedAt.slice(0, 10) || localIsoDate(),
+        timestamp: item.receivedAt,
+        note: `${item.cleanMerchant}${item.cleanMemo && item.cleanMemo !== item.cleanMerchant ? ` · ${item.cleanMemo}` : ''}`.slice(
+          0,
+          140
+        ),
+        merchant: item.cleanMerchant,
+        source: 'gmail',
+        gmailMessageId: item.messageId,
+        linkedBillId: item.matchedBillId,
+        originalAmount: item.originalAmount,
+        originalCurrency: item.originalCurrency,
+      });
+    }
+
+    const matchedBillIds = new Set(pending.map((i) => i.matchedBillId).filter(Boolean));
+    setState((prev) => ({
+      ...prev,
+      finance: {
+        ...prev.finance,
+        inbox: [],
+        transactions: [...createdTxs, ...prev.finance.transactions],
+        recurringBills: prev.finance.recurringBills.map((b) =>
+          matchedBillIds.has(b.id) ? { ...b, lastPaidCycleKey: cycleKey } : b
+        ),
+      },
+    }));
+
+    void ackSupabaseInboxItems(cloudConfigRef.current, ackIds, 'imported');
+    pushToast(`Approved ${pending.length} Gmail transactions`);
+  }, [pushToast]);
+
+  const ignoreInboxItem = useCallback(
+    (id: string) => {
+      const existing = stateRef.current.finance.inbox.find((it) => it.id === id);
+      if (!existing) return;
+      setState((prev) => ({
+        ...prev,
+        finance: {
+          ...prev.finance,
+          inbox: prev.finance.inbox.filter((it) => it.id !== id),
+        },
+      }));
+      void ackSupabaseInboxItems(cloudConfigRef.current, [existing.messageId], 'ignored');
+      pushToast('Ignored Gmail alert', () => {
+        setState((prev) => ({
+          ...prev,
+          finance: {
+            ...prev.finance,
+            inbox: [existing, ...prev.finance.inbox],
+          },
+        }));
+      });
+    },
+    [pushToast]
+  );
+
+  const updateCloudConfigPatch = useCallback((patch: Partial<CloudDbConfig>) => {
+    setCloudConfig((prev) => {
+      const next = { ...prev, ...patch };
+      saveCloudConfigToStorage(next);
+      return next;
+    });
+  }, []);
 
   // Future Module Ideas
   const addFutureIdea = useCallback(
@@ -972,6 +1790,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         pushToast('Synced latest snapshot to Cloud DB');
       }
+      if (cfg.provider === 'supabase') {
+        const inboxRes = await pullSupabaseInboxItems(cfg);
+        if (inboxRes.ok && inboxRes.items.length > 0) {
+          ingestRawGmailPayloads(inboxRes.items);
+        }
+      }
       setCloudStatus((prev) => ({
         ...prev,
         state: 'synced',
@@ -984,7 +1808,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCloudStatus((prev) => ({ ...prev, state: 'error', error: msg }));
       pushToast(msg);
     }
-  }, [applyVaultPayload, buildVaultPayload, pushToast]);
+  }, [applyVaultPayload, buildVaultPayload, ingestRawGmailPayloads, pushToast]);
 
   const pushCloudNow = useCallback(async () => {
     const cfg = cloudConfigRef.current;
@@ -1084,7 +1908,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createWallet,
       updateWallet,
       deleteWallet,
+      reconcileWalletBalance,
       setCategoryBudget,
+      createCategory,
+      updateCategory,
+      deleteCategory,
+      saveAutoRule,
+      deleteAutoRule,
+      saveRecurringBill,
+      deleteRecurringBill,
+      markBillPaid,
+      setPaydayDay,
+      setUsdVndRate,
+      settleSplitTransaction,
+      gmailSyncing,
+      lastGmailSyncAt,
+      syncGmailInbox,
+      importRawGmailText,
+      loadSampleGmailDemo,
+      updateInboxItem,
+      approveInboxItem,
+      approveAllMatchedInbox,
+      ignoreInboxItem,
+      updateCloudConfigPatch,
       addFutureIdea,
       deleteFutureIdea,
       exportUnifiedBackup,
@@ -1137,7 +1983,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createWallet,
       updateWallet,
       deleteWallet,
+      reconcileWalletBalance,
       setCategoryBudget,
+      createCategory,
+      updateCategory,
+      deleteCategory,
+      saveAutoRule,
+      deleteAutoRule,
+      saveRecurringBill,
+      deleteRecurringBill,
+      markBillPaid,
+      setPaydayDay,
+      setUsdVndRate,
+      settleSplitTransaction,
+      gmailSyncing,
+      lastGmailSyncAt,
+      syncGmailInbox,
+      importRawGmailText,
+      loadSampleGmailDemo,
+      updateInboxItem,
+      approveInboxItem,
+      approveAllMatchedInbox,
+      ignoreInboxItem,
+      updateCloudConfigPatch,
       addFutureIdea,
       deleteFutureIdea,
       exportUnifiedBackup,

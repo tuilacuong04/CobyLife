@@ -37,6 +37,7 @@ export const SettingsPage: React.FC = () => {
     cloudConfig,
     cloudStatus,
     navigate,
+    openModal,
     setTheme,
     updateProfile,
     updateSettings,
@@ -624,6 +625,28 @@ export const SettingsPage: React.FC = () => {
                   onClick={() => void handleApplyDeviceCode()}
                 >
                   Apply code
+                </button>
+              </div>
+            </div>
+
+            {/* Automated Gmail Transaction Reader */}
+            <div className="card form-stack">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div>
+                  <h3 className="card__title" style={{ fontSize: 15 }}>
+                    Gmail Auto-Sync (Bank &amp; Receipt Reader)
+                  </h3>
+                  <p className="card__sub">
+                    Automatically capture Vietnamese bank &amp; e-receipt emails 24/7 via your own
+                    Google Apps Script into a write-only Supabase Inbox — zero OAuth popups on Mobile Web.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn--primary btn--sm"
+                  onClick={() => openModal({ kind: 'gmail-setup' })}
+                >
+                  Configure Gmail Sync
                 </button>
               </div>
             </div>

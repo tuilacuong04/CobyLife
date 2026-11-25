@@ -536,11 +536,12 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const txThisMonth = state.finance.transactions.filter((t) =>
     t.date.startsWith(today.slice(0, 7))
   ).length;
+  const pendingGmailCount = state.finance.inbox.filter((it) => it.status === 'pending').length;
 
   const navMeta: { id: PageId; label: string; badge?: number }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'tasks', label: 'Tasks', badge: pendingTasksToday || openTasksCount || undefined },
-    { id: 'finance', label: 'Finance', badge: txThisMonth || undefined },
+    { id: 'finance', label: 'Finance', badge: pendingGmailCount || txThisMonth || undefined },
     { id: 'modules', label: 'Modules', badge: state.futureModules.length || undefined },
   ];
 

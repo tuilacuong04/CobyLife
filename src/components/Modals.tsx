@@ -20,9 +20,18 @@ import {
 import { animateErrorShake } from '../utils/motion';
 import { AnimatedModal } from './Motion';
 import {
+  GmailSetupModal,
+  ManageCategoriesModal,
+  ManageRulesModal,
+  QuickLogModal,
+  ReconcileWalletModal,
+  RecurringBillModal,
+} from './finance/FinanceModals';
+import {
   IconClose,
   IconPlus,
   IconSearch,
+  IconSplit,
   IconTasks,
   IconWallet,
 } from './Icons';
@@ -325,8 +334,9 @@ const NewTransactionModal: React.FC<{
   defaultType?: TxType;
   defaultWalletId?: string;
   defaultCategoryId?: string;
+  defaultDate?: string;
   onClose: () => void;
-}> = ({ defaultType = 'expense', defaultWalletId, defaultCategoryId, onClose }) => {
+}> = ({ defaultType = 'expense', defaultWalletId, defaultCategoryId, defaultDate, onClose }) => {
   const { state, createTransaction } = useApp();
   const boxRef = useRef<HTMLFormElement>(null);
   const [type, setType] = useState<TxType>(defaultType);
@@ -345,8 +355,11 @@ const NewTransactionModal: React.FC<{
     );
     return match?.id || state.finance.categories[0]?.id || '';
   });
-  const [date, setDate] = useState(localIsoDate());
+  const [date, setDate] = useState(defaultDate || localIsoDate());
   const [note, setNote] = useState('');
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [myShareRaw, setMyShareRaw] = useState('');
+  const [counterparty, setCounterparty] = useState('');
   const [error, setError] = useState('');
 
   const parsedAmount = parseSmartAmount(amountRaw);
@@ -363,13 +376,14 @@ const NewTransactionModal: React.FC<{
     if (next === 'transfer') {
       const other = state.finance.wallets.find((w) => w.id !== walletId);
       if (other) setToWalletId(other.id);
+      setSplitEnabled(false);
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (parsedAmount <= 0) {
-      setError('Enter a valid amount (e.g., 50k, 1.5m, 250000).');
+      setError('Enter a valid amount (e.g., 50k, 1,500k, 45k+15k).');
       animateErrorShake(boxRef.current);
       return;
     }
@@ -382,6 +396,19 @@ const NewTransactionModal: React.FC<{
       animateErrorShake(boxRef.current);
       return;
     }
+
+    const parsedShare = splitEnabled ? parseSmartAmount(myShareRaw) : parsedAmount;
+    const split =
+      type === 'expense' && splitEnabled && parsedShare >= 0 && parsedShare < parsedAmount
+        ? {
+            myShare: parsedShare,
+            reimbursable: parsedAmount - parsedShare,
+            repaidAmount: 0,
+            counterparty: counterparty.trim() || undefined,
+            status: 'open' as const,
+          }
+        : undefined;
+
     createTransaction({
       type,
       amount: parsedAmount,
@@ -390,6 +417,8 @@ const NewTransactionModal: React.FC<{
       toWalletId: type === 'transfer' ? toWalletId : undefined,
       date,
       note: note.trim() || (type === 'transfer' ? 'Wallet transfer' : ''),
+      source: 'manual',
+      split,
     });
     onClose();
   };
@@ -434,8 +463,8 @@ const NewTransactionModal: React.FC<{
           </span>
           <input
             className="input"
-            autoFocus
-            placeholder="Quick format: 50k, 1.5m, 250000..."
+            inputMode="text"
+            placeholder="Quick format: 50k, 1,500k, 1.5m, 45k+15k..."
             value={amountRaw}
             onChange={(e) => {
               setAmountRaw(e.target.value);
@@ -532,6 +561,47 @@ const NewTransactionModal: React.FC<{
           </label>
         </div>
 
+        {type === 'expense' && (
+          <div>
+            <button
+              type="button"
+              className={`btn btn--sm ${splitEnabled ? 'btn--primary' : 'btn--ghost'}`}
+              onClick={() => {
+                setSplitEnabled((v) => !v);
+                if (!myShareRaw && parsedAmount > 0) {
+                  setMyShareRaw(String(Math.round(parsedAmount / 2)));
+                }
+              }}
+            >
+              <IconSplit size={14} />
+              {splitEnabled ? 'Splitting Bill (Reimbursable)' : 'Split / Fronted for Friends'}
+            </button>
+
+            {splitEnabled && (
+              <div className="form-grid" style={{ marginTop: 10 }}>
+                <label className="field">
+                  <span className="field__label">My share (counts in Budget)</span>
+                  <input
+                    className="input"
+                    placeholder="e.g. 300k"
+                    value={myShareRaw}
+                    onChange={(e) => setMyShareRaw(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field__label">Friends / Group (optional)</span>
+                  <input
+                    className="input"
+                    placeholder="e.g. Minh, Lan"
+                    value={counterparty}
+                    onChange={(e) => setCounterparty(e.target.value)}
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="modal__foot">
           <button type="button" className="btn btn--ghost" onClick={onClose}>
             Cancel
@@ -545,31 +615,49 @@ const NewTransactionModal: React.FC<{
   );
 };
 
-const NewWalletModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const { createWallet } = useApp();
-  const [name, setName] = useState('');
-  const [kind, setKind] = useState<WalletKind>('bank');
-  const [balanceRaw, setBalanceRaw] = useState('');
-  const [tone, setTone] = useState<AccentTone>('sky');
-  const [note, setNote] = useState('');
+const NewWalletModal: React.FC<{ editWalletId?: string; onClose: () => void }> = ({
+  editWalletId,
+  onClose,
+}) => {
+  const { state, createWallet, updateWallet } = useApp();
+  const existing = editWalletId
+    ? state.finance.wallets.find((w) => w.id === editWalletId)
+    : undefined;
+
+  const [name, setName] = useState(existing?.name || '');
+  const [kind, setKind] = useState<WalletKind>(existing?.kind || 'bank');
+  const [balanceRaw, setBalanceRaw] = useState(
+    existing ? String(existing.initialBalance) : ''
+  );
+  const [tone, setTone] = useState<AccentTone>(existing?.tone || 'sky');
+  const [accountHint, setAccountHint] = useState(existing?.accountHint || '');
+  const [bankCode, setBankCode] = useState(existing?.bankCode || '');
+  const [note, setNote] = useState(existing?.note || '');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    createWallet({
+    const payload = {
       name: name.trim(),
       kind,
       initialBalance: parseSmartAmount(balanceRaw),
       tone,
+      accountHint: accountHint.trim() || undefined,
+      bankCode: bankCode.trim().toUpperCase() || undefined,
       note: note.trim() || undefined,
-    });
+    };
+    if (existing) {
+      updateWallet(existing.id, payload);
+    } else {
+      createWallet(payload);
+    }
     onClose();
   };
 
   return (
-    <AnimatedModal open onClose={onClose} label="Add wallet">
+    <AnimatedModal open onClose={onClose} label={existing ? 'Edit wallet' : 'Add wallet'}>
       <div className="modal__head">
-        <h2 className="modal__title">New wallet</h2>
+        <h2 className="modal__title">{existing ? 'Edit wallet' : 'New wallet'}</h2>
         <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
           <IconClose size={16} />
         </button>
@@ -579,8 +667,7 @@ const NewWalletModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <span className="field__label">Wallet name</span>
           <input
             className="input"
-            autoFocus
-            placeholder="e.g., Checking, MoMo, Travel Fund..."
+            placeholder="e.g., Timo Bank, ACB Checking, MoMo..."
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -607,6 +694,27 @@ const NewWalletModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               placeholder="0"
               value={balanceRaw}
               onChange={(e) => setBalanceRaw(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="form-grid">
+          <label className="field">
+            <span className="field__label">Account / Card last 4 digits (Gmail match)</span>
+            <input
+              className="input"
+              maxLength={8}
+              placeholder="e.g. 9012"
+              value={accountHint}
+              onChange={(e) => setAccountHint(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span className="field__label">Bank tag (optional)</span>
+            <input
+              className="input"
+              placeholder="e.g. TIMO, ACB, VCB, VIB, MOMO"
+              value={bankCode}
+              onChange={(e) => setBankCode(e.target.value)}
             />
           </label>
         </div>
@@ -639,7 +747,7 @@ const NewWalletModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             Cancel
           </button>
           <button type="submit" className="btn btn--primary">
-            Add wallet
+            {existing ? 'Save changes' : 'Add wallet'}
           </button>
         </div>
       </form>
@@ -681,7 +789,6 @@ const NewIdeaModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <span className="field__label">Module name</span>
           <input
             className="input"
-            autoFocus
             placeholder="e.g., Sleep Tracker, Journal, Reading List..."
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -803,11 +910,38 @@ export const Modals: React.FC = () => {
         defaultType={modal.defaultType}
         defaultWalletId={modal.defaultWalletId}
         defaultCategoryId={modal.defaultCategoryId}
+        defaultDate={modal.defaultDate}
         onClose={closeModal}
       />
     );
   }
-  if (modal.kind === 'new-wallet') return <NewWalletModal onClose={closeModal} />;
+  if (modal.kind === 'new-wallet') {
+    return <NewWalletModal editWalletId={modal.editWalletId} onClose={closeModal} />;
+  }
+  if (modal.kind === 'quick-log') {
+    return <QuickLogModal defaultWalletId={modal.defaultWalletId} onClose={closeModal} />;
+  }
+  if (modal.kind === 'reconcile-wallet') {
+    return (
+      <ReconcileWalletModal
+        walletId={modal.walletId}
+        targetBalance={modal.targetBalance}
+        onClose={closeModal}
+      />
+    );
+  }
+  if (modal.kind === 'gmail-setup') {
+    return <GmailSetupModal onClose={closeModal} />;
+  }
+  if (modal.kind === 'manage-categories') {
+    return <ManageCategoriesModal onClose={closeModal} />;
+  }
+  if (modal.kind === 'manage-rules') {
+    return <ManageRulesModal onClose={closeModal} />;
+  }
+  if (modal.kind === 'new-bill') {
+    return <RecurringBillModal editBillId={modal.editBillId} onClose={closeModal} />;
+  }
   if (modal.kind === 'new-idea') return <NewIdeaModal onClose={closeModal} />;
   return null;
 };
