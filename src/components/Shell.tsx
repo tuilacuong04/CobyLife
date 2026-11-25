@@ -4,6 +4,7 @@ import { APP_MODULES } from '../modules/registry';
 import { useApp } from '../store/AppContext';
 import { ModuleId, PageId } from '../types';
 import { assetUrl } from '../utils/assets';
+import { getAuthAccount, signOut } from '../utils/auth';
 import { localIsoDate } from '../utils/format';
 import {
   clamp01,
@@ -21,6 +22,7 @@ import {
   IconChevronRight,
   IconDatabase,
   IconDownload,
+  IconExternal,
   IconLock,
   IconMenu,
   IconModuleGlyph,
@@ -548,6 +550,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const activeModuleIdx = MODULE_IDS.indexOf(route.page as ModuleId);
   const activeNavIdx = NAV_IDS.indexOf(route.page);
   const { theme, profile, pinEnabled } = state.settings;
+  const authIdentifier = getAuthAccount()?.identifier;
 
   const renderGlyphIcon = (idx: number) => {
     switch (idx) {
@@ -1118,7 +1121,9 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                   <RepAvatar src={profile.avatar} name={profile.name} size={40} />
                   <div className="acct-card__info">
                     <div className="acct-card__name">{profile.name}</div>
-                    <div className="acct-card__sub">{profile.tagline}</div>
+                    <div className="acct-card__sub">
+                      {authIdentifier || profile.tagline}
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -1243,6 +1248,28 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                       </span>
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    className="pop-item pop-item--danger"
+                    onClick={() => {
+                      setOpenPopover(null);
+                      signOut();
+                      pushToast('Signed out of workspace');
+                    }}
+                  >
+                    <span className="pop-item__icon pop-item__icon--danger">
+                      <IconExternal size={16} />
+                    </span>
+                    <span className="pop-item__text">
+                      <span className="pop-item__title">Sign out</span>
+                      <span className="pop-item__sub">
+                        {authIdentifier
+                          ? `End session for ${authIdentifier}`
+                          : 'Return to sign-in screen'}
+                      </span>
+                    </span>
+                  </button>
                 </div>
               </AnimatedPopover>
             </div>

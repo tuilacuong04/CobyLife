@@ -428,6 +428,37 @@ export async function loadLocalIdbSnapshot(): Promise<UnifiedVaultPayload | null
   });
 }
 
+export async function clearLocalIdbSnapshot(): Promise<boolean> {
+  const db = await openLocalIdb();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    try {
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.close();
+        resolve(true);
+        return;
+      }
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(IDB_KEY);
+      tx.oncomplete = () => {
+        db.close();
+        resolve(true);
+      };
+      tx.onerror = () => {
+        db.close();
+        resolve(false);
+      };
+      tx.onabort = () => {
+        db.close();
+        resolve(false);
+      };
+    } catch {
+      db.close();
+      resolve(false);
+    }
+  });
+}
+
 /* ========================== Cloud DB Drivers ========================== */
 
 function normalizeSupabaseUrl(url: string): string {

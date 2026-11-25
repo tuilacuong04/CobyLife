@@ -973,8 +973,11 @@ body,
   border: 1px solid var(--rim);
   box-shadow: var(--shadow);
   margin-bottom: 16px;
+  flex-shrink: 0;
+  min-height: 44px;
   max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
 }
 
@@ -1024,13 +1027,39 @@ body,
   background: var(--glass);
   border: 1px solid var(--rim);
   box-shadow: var(--shadow);
+  flex-shrink: 0;
+  min-height: 44px;
   max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
 }
 
 .seg::-webkit-scrollbar {
   display: none;
+}
+
+.seg--full,
+.seg[style*='width: 100%'],
+.seg[style*='width:100%'] {
+  display: flex;
+  width: 100%;
+}
+
+.seg--full .seg__btn,
+.seg[style*='width: 100%'] .seg__btn,
+.seg[style*='width:100%'] .seg__btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.seg--full .seg__btn > span:not(.seg__badge):not(.stage-dot),
+.seg[style*='width: 100%'] .seg__btn > span:not(.seg__badge):not(.stage-dot),
+.seg[style*='width:100%'] .seg__btn > span:not(.seg__badge):not(.stage-dot) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .seg__btn {
@@ -1101,8 +1130,10 @@ body,
 .modal {
   pointer-events: auto;
   width: min(540px, 100%);
-  max-height: calc(100dvh - 32px);
-  overflow-y: auto;
+  max-height: min(88dvh, 780px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-radius: 26px;
   background: var(--float);
   border: 1px solid var(--line);
@@ -1119,6 +1150,8 @@ body,
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
   margin-bottom: 16px;
 }
 
@@ -1127,6 +1160,32 @@ body,
   font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.015em;
+  line-height: 1.25;
+}
+
+.modal__form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 6px 2px 2px;
+  margin: -2px -6px -2px -2px;
+}
+
+.modal__body > *,
+.modal__body.form-stack > *,
+.drawer__body > *,
+.drawer__body.form-stack > * {
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 .modal__foot {
@@ -1134,7 +1193,10 @@ body,
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 20px;
+  flex-shrink: 0;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 
 .drawer {
@@ -1157,6 +1219,7 @@ body,
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  flex-shrink: 0;
   padding: 20px 20px 14px;
   border-bottom: 1px solid var(--line);
 }
@@ -1175,7 +1238,8 @@ body,
 }
 
 .drawer__body {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 18px 20px 24px;
@@ -1189,6 +1253,7 @@ body,
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-shrink: 0;
   padding: 14px 20px;
   border-top: 1px solid var(--line);
 }
@@ -1573,7 +1638,24 @@ body,
     max-width: 100%;
     max-height: 90dvh;
     border-radius: 26px 26px 0 0;
-    padding-bottom: max(22px, env(safe-area-inset-bottom));
+    padding: 20px 18px max(20px, env(safe-area-inset-bottom));
+  }
+  .modal__head {
+    margin-bottom: 12px;
+  }
+  .modal__title {
+    font-size: 18px;
+  }
+  .modal__foot {
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  .seg--full .seg__btn,
+  .seg[style*='width: 100%'] .seg__btn,
+  .seg[style*='width:100%'] .seg__btn {
+    padding: 0 8px;
+    font-size: 12px;
+    gap: 5px;
   }
   .drawer {
     top: auto;
@@ -1585,6 +1667,15 @@ body,
     height: auto;
     border-radius: 26px 26px 0 0;
     padding-bottom: env(safe-area-inset-bottom);
+  }
+  .drawer__head {
+    padding: 16px 18px 12px;
+  }
+  .drawer__body {
+    padding: 16px 18px 20px;
+  }
+  .drawer__foot {
+    padding: 12px 18px;
   }
   .form-grid {
     grid-template-columns: 1fr;

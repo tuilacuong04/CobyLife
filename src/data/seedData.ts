@@ -1,4 +1,5 @@
 import {
+  AppSettings,
   FinanceCategory,
   FinanceWallet,
   FutureModuleIdea,
@@ -101,7 +102,26 @@ function monthDay(monthKey: string, day: number): string {
   return `${monthKey}-${String(safeDay).padStart(2, '0')}`;
 }
 
-export function createStarterState(): PersistedAppState {
+function createDefaultSettings(): AppSettings {
+  return {
+    theme: 'dark',
+    currency: 'VND',
+    weekStartsOn: 'monday',
+    pinEnabled: false,
+    pinCode: '1234',
+    profile: {
+      name: 'Cuong',
+      tagline: 'Coby LIFE · Personal OS',
+      avatar: '/images/rep-luca.svg',
+    },
+    enabledModules: {
+      tasks: true,
+      finance: true,
+    },
+  };
+}
+
+export function createDemoSampleState(): PersistedAppState {
   const today = localIsoDate();
   const curM = currentMonthKey();
   const prev1 = shiftMonthKey(curM, -1);
@@ -263,29 +283,13 @@ export function createStarterState(): PersistedAppState {
       usdVndRate: 25500,
     },
     futureModules: DEFAULT_FUTURE_IDEAS,
-    settings: {
-      theme: 'dark',
-      currency: 'VND',
-      weekStartsOn: 'monday',
-      pinEnabled: false,
-      pinCode: '1234',
-      profile: {
-        name: 'Cuong',
-        tagline: 'Coby LIFE · Personal OS',
-        avatar: '/images/rep-luca.svg',
-      },
-      enabledModules: {
-        tasks: true,
-        finance: true,
-      },
-    },
+    settings: createDefaultSettings(),
   };
 }
 
 export function createEmptyPersonalState(): PersistedAppState {
-  const base = createStarterState();
   return {
-    ...base,
+    version: 3,
     tasks: [],
     finance: {
       wallets: [
@@ -302,5 +306,11 @@ export function createEmptyPersonalState(): PersistedAppState {
       paydayDay: 1,
       usdVndRate: 25500,
     },
+    futureModules: [],
+    settings: createDefaultSettings(),
   };
+}
+
+export function createStarterState(): PersistedAppState {
+  return createEmptyPersonalState();
 }

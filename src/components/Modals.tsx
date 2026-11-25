@@ -18,7 +18,7 @@ import {
   WALLET_KIND_LABEL,
 } from '../utils/format';
 import { animateErrorShake } from '../utils/motion';
-import { AnimatedModal } from './Motion';
+import { AnimatedModal, SlidingSegmented } from './Motion';
 import {
   GmailSetupModal,
   ManageCategoriesModal,
@@ -218,104 +218,106 @@ const NewTaskModal: React.FC<{
           <IconClose size={16} />
         </button>
       </div>
-      <form ref={boxRef} className="modal__body form-stack" onSubmit={handleSubmit}>
-        <label className="field">
-          <span className="field__label">Title</span>
-          <input
-            className="input"
-            autoFocus
-            placeholder="e.g., Pay internet bill, Read 20 pages..."
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              if (error) setError('');
-            }}
-          />
-          {error && <span className="field__error">{error}</span>}
-        </label>
+      <form ref={boxRef} className="modal__form" onSubmit={handleSubmit}>
+        <div className="modal__body form-stack">
+          <label className="field">
+            <span className="field__label">Title</span>
+            <input
+              className="input"
+              autoFocus
+              placeholder="e.g., Pay internet bill, Read 20 pages..."
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                if (error) setError('');
+              }}
+            />
+            {error && <span className="field__error">{error}</span>}
+          </label>
 
-        <div className="form-grid">
+          <div className="form-grid">
+            <label className="field">
+              <span className="field__label">Category</span>
+              <select
+                className="select"
+                value={category}
+                onChange={(e) => setCategory(e.target.value as TaskCategory)}
+              >
+                {(Object.keys(TASK_CATEGORY_META) as TaskCategory[]).map((cat) => (
+                  <option key={cat} value={cat}>
+                    {TASK_CATEGORY_META[cat].label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field__label">Priority</span>
+              <select
+                className="select"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as TaskPriority)}
+              >
+                <option value="high">High priority</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </label>
+            <label className="field">
+              <span className="field__label">Due date</span>
+              <input
+                type="date"
+                className="input"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">Time (optional)</span>
+              <input
+                type="time"
+                className="input"
+                value={dueTime}
+                onChange={(e) => setDueTime(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">Status</span>
+              <select
+                className="select"
+                value={status}
+                onChange={(e) => setStatus(e.target.value as TaskStatus)}
+              >
+                <option value="todo">To Do</option>
+                <option value="doing">In Progress</option>
+                <option value="done">Done</option>
+              </select>
+            </label>
+            <label className="field">
+              <span className="field__label">Repeat</span>
+              <select
+                className="select"
+                value={recurrence}
+                onChange={(e) => setRecurrence(e.target.value as TaskRecurrence)}
+              >
+                <option value="none">No repeat</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </label>
+          </div>
+
           <label className="field">
-            <span className="field__label">Category</span>
-            <select
-              className="select"
-              value={category}
-              onChange={(e) => setCategory(e.target.value as TaskCategory)}
-            >
-              {(Object.keys(TASK_CATEGORY_META) as TaskCategory[]).map((cat) => (
-                <option key={cat} value={cat}>
-                  {TASK_CATEGORY_META[cat].label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Priority</span>
-            <select
-              className="select"
-              value={priority}
-              onChange={(e) => setPriority(e.target.value as TaskPriority)}
-            >
-              <option value="high">High priority</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Due date</span>
-            <input
-              type="date"
-              className="input"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+            <span className="field__label">Notes</span>
+            <textarea
+              className="textarea"
+              rows={3}
+              placeholder="Extra context or links..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
             />
-          </label>
-          <label className="field">
-            <span className="field__label">Time (optional)</span>
-            <input
-              type="time"
-              className="input"
-              value={dueTime}
-              onChange={(e) => setDueTime(e.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span className="field__label">Status</span>
-            <select
-              className="select"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as TaskStatus)}
-            >
-              <option value="todo">To Do</option>
-              <option value="doing">In Progress</option>
-              <option value="done">Done</option>
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Repeat</span>
-            <select
-              className="select"
-              value={recurrence}
-              onChange={(e) => setRecurrence(e.target.value as TaskRecurrence)}
-            >
-              <option value="none">No repeat</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
           </label>
         </div>
-
-        <label className="field">
-          <span className="field__label">Notes</span>
-          <textarea
-            className="textarea"
-            rows={3}
-            placeholder="Extra context or links..."
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </label>
 
         <div className="modal__foot">
           <button type="button" className="btn btn--ghost" onClick={onClose}>
@@ -431,176 +433,170 @@ const NewTransactionModal: React.FC<{
           <IconClose size={16} />
         </button>
       </div>
-      <form ref={boxRef} className="modal__body form-stack" onSubmit={handleSubmit}>
-        <div className="seg" style={{ width: '100%' }}>
-          {(
-            [
+      <form ref={boxRef} className="modal__form" onSubmit={handleSubmit}>
+        <div className="modal__body form-stack">
+          <SlidingSegmented<TxType>
+            className="seg--full"
+            ariaLabel="Transaction type"
+            value={type}
+            onChange={handleTypeChange}
+            items={[
               { id: 'expense', label: 'Expense' },
               { id: 'income', label: 'Income' },
               { id: 'transfer', label: 'Transfer' },
-            ] as { id: TxType; label: string }[]
-          ).map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`seg__btn ${type === item.id ? 'is-active' : ''}`}
-              style={{ flex: 1 }}
-              onClick={() => handleTypeChange(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        <label className="field">
-          <span className="field__label">
-            Amount{' '}
-            {parsedAmount > 0 && (
-              <strong style={{ color: 'var(--accent-ink)', marginLeft: 6 }}>
-                = {formatMoney(parsedAmount, state.settings.currency)}
-              </strong>
-            )}
-          </span>
-          <input
-            className="input"
-            inputMode="text"
-            placeholder="Quick format: 50k, 1,500k, 1.5m, 45k+15k..."
-            value={amountRaw}
-            onChange={(e) => {
-              setAmountRaw(e.target.value);
-              if (error) setError('');
-            }}
+            ]}
           />
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-            {['35k', '50k', '100k', '250k', '500k', '1m'].map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                className="chip"
-                style={{ height: 26, fontSize: 12 }}
-                onClick={() => {
-                  setAmountRaw(preset);
-                  if (error) setError('');
-                }}
-              >
-                {preset}
-              </button>
-            ))}
-          </div>
-          {error && <span className="field__error">{error}</span>}
-        </label>
 
-        <div className="form-grid">
           <label className="field">
-            <span className="field__label">{type === 'transfer' ? 'From wallet' : 'Wallet'}</span>
-            <select
-              className="select"
-              value={walletId}
-              onChange={(e) => setWalletId(e.target.value)}
-            >
-              {state.finance.wallets.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
+            <span className="field__label">
+              Amount{' '}
+              {parsedAmount > 0 && (
+                <strong style={{ color: 'var(--accent-ink)', marginLeft: 6 }}>
+                  = {formatMoney(parsedAmount, state.settings.currency)}
+                </strong>
+              )}
+            </span>
+            <input
+              className="input"
+              inputMode="text"
+              placeholder="Quick format: 50k, 1,500k, 1.5m, 45k+15k..."
+              value={amountRaw}
+              onChange={(e) => {
+                setAmountRaw(e.target.value);
+                if (error) setError('');
+              }}
+            />
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+              {['35k', '50k', '100k', '250k', '500k', '1m'].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  className="chip"
+                  style={{ height: 26, fontSize: 12 }}
+                  onClick={() => {
+                    setAmountRaw(preset);
+                    if (error) setError('');
+                  }}
+                >
+                  {preset}
+                </button>
               ))}
-            </select>
+            </div>
+            {error && <span className="field__error">{error}</span>}
           </label>
 
-          {type === 'transfer' ? (
+          <div className="form-grid">
             <label className="field">
-              <span className="field__label">To wallet</span>
+              <span className="field__label">{type === 'transfer' ? 'From wallet' : 'Wallet'}</span>
               <select
                 className="select"
-                value={toWalletId}
-                onChange={(e) => setToWalletId(e.target.value)}
+                value={walletId}
+                onChange={(e) => setWalletId(e.target.value)}
               >
-                {state.finance.wallets
-                  .filter((w) => w.id !== walletId)
-                  .map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-          ) : (
-            <label className="field">
-              <span className="field__label">Category</span>
-              <select
-                className="select"
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-              >
-                {filteredCats.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
+                {state.finance.wallets.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
                   </option>
                 ))}
               </select>
             </label>
-          )}
 
-          <label className="field">
-            <span className="field__label">Date</span>
-            <input
-              type="date"
-              className="input"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </label>
-
-          <label className="field">
-            <span className="field__label">Note</span>
-            <input
-              className="input"
-              placeholder="e.g., Lunch, Coffee, Fuel..."
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </label>
-        </div>
-
-        {type === 'expense' && (
-          <div>
-            <button
-              type="button"
-              className={`btn btn--sm ${splitEnabled ? 'btn--primary' : 'btn--ghost'}`}
-              onClick={() => {
-                setSplitEnabled((v) => !v);
-                if (!myShareRaw && parsedAmount > 0) {
-                  setMyShareRaw(String(Math.round(parsedAmount / 2)));
-                }
-              }}
-            >
-              <IconSplit size={14} />
-              {splitEnabled ? 'Splitting Bill (Reimbursable)' : 'Split / Fronted for Friends'}
-            </button>
-
-            {splitEnabled && (
-              <div className="form-grid" style={{ marginTop: 10 }}>
-                <label className="field">
-                  <span className="field__label">My share (counts in Budget)</span>
-                  <input
-                    className="input"
-                    placeholder="e.g. 300k"
-                    value={myShareRaw}
-                    onChange={(e) => setMyShareRaw(e.target.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span className="field__label">Friends / Group (optional)</span>
-                  <input
-                    className="input"
-                    placeholder="e.g. Minh, Lan"
-                    value={counterparty}
-                    onChange={(e) => setCounterparty(e.target.value)}
-                  />
-                </label>
-              </div>
+            {type === 'transfer' ? (
+              <label className="field">
+                <span className="field__label">To wallet</span>
+                <select
+                  className="select"
+                  value={toWalletId}
+                  onChange={(e) => setToWalletId(e.target.value)}
+                >
+                  {state.finance.wallets
+                    .filter((w) => w.id !== walletId)
+                    .map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            ) : (
+              <label className="field">
+                <span className="field__label">Category</span>
+                <select
+                  className="select"
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                >
+                  {filteredCats.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
+
+            <label className="field">
+              <span className="field__label">Date</span>
+              <input
+                type="date"
+                className="input"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </label>
+
+            <label className="field">
+              <span className="field__label">Note</span>
+              <input
+                className="input"
+                placeholder="e.g., Lunch, Coffee, Fuel..."
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </label>
           </div>
-        )}
+
+          {type === 'expense' && (
+            <div>
+              <button
+                type="button"
+                className={`btn btn--sm ${splitEnabled ? 'btn--primary' : 'btn--ghost'}`}
+                onClick={() => {
+                  setSplitEnabled((v) => !v);
+                  if (!myShareRaw && parsedAmount > 0) {
+                    setMyShareRaw(String(Math.round(parsedAmount / 2)));
+                  }
+                }}
+              >
+                <IconSplit size={14} />
+                {splitEnabled ? 'Splitting Bill (Reimbursable)' : 'Split / Fronted for Friends'}
+              </button>
+
+              {splitEnabled && (
+                <div className="form-grid" style={{ marginTop: 10 }}>
+                  <label className="field">
+                    <span className="field__label">My share (counts in Budget)</span>
+                    <input
+                      className="input"
+                      placeholder="e.g. 300k"
+                      value={myShareRaw}
+                      onChange={(e) => setMyShareRaw(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field__label">Friends / Group (optional)</span>
+                    <input
+                      className="input"
+                      placeholder="e.g. Minh, Lan"
+                      value={counterparty}
+                      onChange={(e) => setCounterparty(e.target.value)}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="modal__foot">
           <button type="button" className="btn btn--ghost" onClick={onClose}>
@@ -662,86 +658,88 @@ const NewWalletModal: React.FC<{ editWalletId?: string; onClose: () => void }> =
           <IconClose size={16} />
         </button>
       </div>
-      <form className="modal__body form-stack" onSubmit={handleSubmit}>
-        <label className="field">
-          <span className="field__label">Wallet name</span>
-          <input
-            className="input"
-            placeholder="e.g., Timo Bank, ACB Checking, MoMo..."
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-        <div className="form-grid">
+      <form className="modal__form" onSubmit={handleSubmit}>
+        <div className="modal__body form-stack">
           <label className="field">
-            <span className="field__label">Type</span>
-            <select
-              className="select"
-              value={kind}
-              onChange={(e) => setKind(e.target.value as WalletKind)}
-            >
-              {(Object.keys(WALLET_KIND_LABEL) as WalletKind[]).map((k) => (
-                <option key={k} value={k}>
-                  {WALLET_KIND_LABEL[k]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span className="field__label">Starting balance (e.g. 5m)</span>
+            <span className="field__label">Wallet name</span>
             <input
               className="input"
-              placeholder="0"
-              value={balanceRaw}
-              onChange={(e) => setBalanceRaw(e.target.value)}
+              placeholder="e.g., Timo Bank, ACB Checking, MoMo..."
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
           </label>
-        </div>
-        <div className="form-grid">
-          <label className="field">
-            <span className="field__label">Account / Card last 4 digits (Gmail match)</span>
-            <input
-              className="input"
-              maxLength={8}
-              placeholder="e.g. 9012"
-              value={accountHint}
-              onChange={(e) => setAccountHint(e.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span className="field__label">Bank tag (optional)</span>
-            <input
-              className="input"
-              placeholder="e.g. TIMO, ACB, VCB, VIB, MOMO"
-              value={bankCode}
-              onChange={(e) => setBankCode(e.target.value)}
-            />
-          </label>
-        </div>
-        <label className="field">
-          <span className="field__label">Card accent</span>
-          <div className="seg">
-            {(['sky', 'lime', 'coral', 'sand'] as AccentTone[]).map((t) => (
-              <button
-                key={t}
-                type="button"
-                className={`seg__btn ${tone === t ? 'is-active' : ''}`}
-                onClick={() => setTone(t)}
+          <div className="form-grid">
+            <label className="field">
+              <span className="field__label">Type</span>
+              <select
+                className="select"
+                value={kind}
+                onChange={(e) => setKind(e.target.value as WalletKind)}
               >
-                {t}
-              </button>
-            ))}
+                {(Object.keys(WALLET_KIND_LABEL) as WalletKind[]).map((k) => (
+                  <option key={k} value={k}>
+                    {WALLET_KIND_LABEL[k]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field__label">Starting balance (e.g. 5m)</span>
+              <input
+                className="input"
+                placeholder="0"
+                value={balanceRaw}
+                onChange={(e) => setBalanceRaw(e.target.value)}
+              />
+            </label>
           </div>
-        </label>
-        <label className="field">
-          <span className="field__label">Note</span>
-          <input
-            className="input"
-            placeholder="Optional description..."
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-        </label>
+          <div className="form-grid">
+            <label className="field">
+              <span className="field__label">Account / Card last 4 digits (Gmail match)</span>
+              <input
+                className="input"
+                maxLength={8}
+                placeholder="e.g. 9012"
+                value={accountHint}
+                onChange={(e) => setAccountHint(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">Bank tag (optional)</span>
+              <input
+                className="input"
+                placeholder="e.g. TIMO, ACB, VCB, VIB, MOMO"
+                value={bankCode}
+                onChange={(e) => setBankCode(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="field">
+            <span className="field__label">Card accent</span>
+            <SlidingSegmented<AccentTone>
+              className="seg--full"
+              ariaLabel="Card accent"
+              value={tone}
+              onChange={setTone}
+              items={[
+                { id: 'sky', label: 'Sky', icon: <span className="stage-dot stage-dot--sky" /> },
+                { id: 'lime', label: 'Lime', icon: <span className="stage-dot stage-dot--lime" /> },
+                { id: 'coral', label: 'Coral', icon: <span className="stage-dot stage-dot--coral" /> },
+                { id: 'sand', label: 'Sand', icon: <span className="stage-dot stage-dot--sand" /> },
+              ]}
+            />
+          </div>
+          <label className="field">
+            <span className="field__label">Note</span>
+            <input
+              className="input"
+              placeholder="Optional description..."
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </label>
+        </div>
         <div className="modal__foot">
           <button type="button" className="btn btn--ghost" onClick={onClose}>
             Cancel
@@ -784,63 +782,65 @@ const NewIdeaModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <IconClose size={16} />
         </button>
       </div>
-      <form className="modal__body form-stack" onSubmit={handleSubmit}>
-        <label className="field">
-          <span className="field__label">Module name</span>
-          <input
-            className="input"
-            placeholder="e.g., Sleep Tracker, Journal, Reading List..."
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-        <div className="form-grid">
+      <form className="modal__form" onSubmit={handleSubmit}>
+        <div className="modal__body form-stack">
           <label className="field">
-            <span className="field__label">Category</span>
+            <span className="field__label">Module name</span>
             <input
               className="input"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g., Sleep Tracker, Journal, Reading List..."
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
           </label>
+          <div className="form-grid">
+            <label className="field">
+              <span className="field__label">Category</span>
+              <input
+                className="input"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">Priority</span>
+              <select
+                className="select"
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as 'high' | 'medium' | 'low')}
+              >
+                <option value="high">Next up</option>
+                <option value="medium">Medium</option>
+                <option value="low">Later</option>
+              </select>
+            </label>
+          </div>
+          <div className="field">
+            <span className="field__label">Accent</span>
+            <SlidingSegmented<AccentTone>
+              className="seg--full"
+              ariaLabel="Module accent"
+              value={tone}
+              onChange={setTone}
+              items={[
+                { id: 'lime', label: 'Lime', icon: <span className="stage-dot stage-dot--lime" /> },
+                { id: 'sky', label: 'Sky', icon: <span className="stage-dot stage-dot--sky" /> },
+                { id: 'coral', label: 'Coral', icon: <span className="stage-dot stage-dot--coral" /> },
+                { id: 'sand', label: 'Sand', icon: <span className="stage-dot stage-dot--sand" /> },
+              ]}
+            />
+          </div>
           <label className="field">
-            <span className="field__label">Priority</span>
-            <select
-              className="select"
-              value={priority}
-              onChange={(e) => setPriority(e.target.value as 'high' | 'medium' | 'low')}
-            >
-              <option value="high">Next up</option>
-              <option value="medium">Medium</option>
-              <option value="low">Later</option>
-            </select>
+            <span className="field__label">Description</span>
+            <textarea
+              className="textarea"
+              rows={3}
+              placeholder="What should this module help you track?"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </label>
         </div>
-        <label className="field">
-          <span className="field__label">Accent</span>
-          <div className="seg">
-            {(['lime', 'sky', 'coral', 'sand'] as AccentTone[]).map((t) => (
-              <button
-                key={t}
-                type="button"
-                className={`seg__btn ${tone === t ? 'is-active' : ''}`}
-                onClick={() => setTone(t)}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-        </label>
-        <label className="field">
-          <span className="field__label">Description</span>
-          <textarea
-            className="textarea"
-            rows={3}
-            placeholder="What should this module help you track?"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </label>
         <div className="modal__foot">
           <button type="button" className="btn btn--ghost" onClick={onClose}>
             Cancel

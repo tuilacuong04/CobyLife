@@ -3,7 +3,6 @@ import { createStarterState } from '../data/seedData';
 import {
   DEFAULT_AUTO_RULES,
   DEFAULT_QUICK_PRESETS,
-  DEFAULT_RECURRING_BILLS,
 } from './financeEngine';
 
 export const APP_STORAGE_KEY = 'coby_life_os_v1';
@@ -60,7 +59,7 @@ export function normalizePersistedState(raw: unknown): PersistedAppState {
         rules: Array.isArray(rawFin.rules) ? rawFin.rules : DEFAULT_AUTO_RULES,
         recurringBills: Array.isArray(rawFin.recurringBills)
           ? rawFin.recurringBills
-          : DEFAULT_RECURRING_BILLS,
+          : [],
         quickPresets: Array.isArray(rawFin.quickPresets)
           ? rawFin.quickPresets
           : DEFAULT_QUICK_PRESETS,
@@ -81,7 +80,7 @@ export function normalizePersistedState(raw: unknown): PersistedAppState {
     finance: normalizedFinance,
     futureModules: Array.isArray(parsed.futureModules)
       ? parsed.futureModules
-      : fallback.futureModules,
+      : [],
     settings: {
       ...fallback.settings,
       ...(parsed.settings || {}),

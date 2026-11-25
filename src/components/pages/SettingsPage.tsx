@@ -13,12 +13,15 @@ import { localIsoDate } from '../../utils/format';
 import { RepAvatar } from '../Avatar';
 import { SlidingSegmented, SwapView } from '../Motion';
 import {
+  IconAlert,
   IconCheck,
   IconCopy,
   IconDatabase,
   IconDownload,
   IconLock,
   IconRefresh,
+  IconSparkles,
+  IconTrash,
   IconUpload,
 } from '../Icons';
 
@@ -44,8 +47,10 @@ export const SettingsPage: React.FC = () => {
     lockApp,
     exportUnifiedBackup,
     importUnifiedBackup,
-    clearToEmpty,
-    resetStarterData,
+    clearTasksData,
+    clearFinanceData,
+    clearAllWorkspaceData,
+    loadDemoSampleData,
     saveCloudConfig,
     disconnectCloudDb,
     syncCloudNow,
@@ -66,8 +71,8 @@ export const SettingsPage: React.FC = () => {
   const [tagline, setTagline] = useState(state.settings.profile.tagline);
   const [avatar, setAvatar] = useState(state.settings.profile.avatar);
   const [pinDraft, setPinDraft] = useState(state.settings.pinCode);
-  const [confirmClear, setConfirmClear] = useState(false);
-  const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<null | 'tasks' | 'finance' | 'all' | 'factory'>(null);
+  const [resetBusy, setResetBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Cloud DB form state
@@ -94,6 +99,20 @@ export const SettingsPage: React.FC = () => {
       setDbProvider(cloudConfig.provider);
     }
   }, [cloudConfig]);
+
+  useEffect(() => {
+    setConfirmAction(null);
+  }, [activeTab]);
+
+  useEffect(() => {
+    setName(state.settings.profile.name);
+    setTagline(state.settings.profile.tagline);
+    setAvatar(state.settings.profile.avatar);
+  }, [
+    state.settings.profile.name,
+    state.settings.profile.tagline,
+    state.settings.profile.avatar,
+  ]);
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -750,104 +769,238 @@ export const SettingsPage: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'data' && (
-          <div className="card form-stack" style={{ maxWidth: 680 }}>
-            <div>
-              <h2 className="card__title">All-in-One Backup &amp; Restore</h2>
-              <p className="card__sub">
-                Export a single JSON snapshot containing{' '}
-                <strong>Tasks ({state.tasks.length})</strong>,{' '}
-                <strong>Finance ({state.finance.transactions.length} transactions)</strong>, and{' '}
-                <strong>Settings</strong>.
-              </p>
-            </div>
+        {activeTab === 'data' && (() => {
+          const clearRows: Array<{
+            id: 'tasks' | 'finance' | 'all' | 'factory';
+            title: string;
+            badge?: string;
+            description: string;
+            actionLabel: string;
+            confirmLabel: string;
+            busyLabel?: string;
+            icon: React.ReactNode;
+            isFactory?: boolean;
+            onConfirm: () => void | Promise<void>;
+          }> = [
+            {
+              id: 'tasks',
+              title: 'Clear Tasks',
+              badge: `${state.tasks.length} tasks`,
+              description:
+                'Remove all tasks and subtasks while keeping Finance, Wallets & Settings.',
+              actionLabel: 'Clear Tasks',
+              confirmLabel: 'Confirm Clear',
+              icon: <IconTrash size={14} />,
+              onConfirm: () => clearTasksData(),
+            },
+            {
+              id: 'finance',
+              title: 'Clear Finance & Inbox',
+              badge: `${state.finance.transactions.length} tx · ${state.finance.inbox.length} inbox`,
+              description:
+                'Clear transactions, budgets, recurring bills & Gmail Inbox, and reset all wallets to 0.',
+              actionLabel: 'Clear Finance',
+              confirmLabel: 'Confirm Clear',
+              icon: <IconTrash size={14} />,
+              onConfirm: () => clearFinanceData(),
+            },
+            {
+              id: 'all',
+              title: 'Clear All Workspace Data',
+              description:
+                'Wipe Tasks, Finance & Future Modules, reset wallets to 0, and clear local IndexedDB snapshot.',
+              actionLabel: 'Clear Workspace',
+              confirmLabel: 'Confirm Wipe',
+              busyLabel: 'Clearing...',
+              icon: <IconRefresh size={14} />,
+              onConfirm: () => clearAllWorkspaceData(),
+            },
+            {
+              id: 'factory',
+              title: 'Factory Reset Device',
+              description:
+                'Wipe all local data, IndexedDB, Cloud DB config & credentials, and sign out of this browser.',
+              actionLabel: 'Factory Reset',
+              confirmLabel: 'Confirm Reset',
+              busyLabel: 'Resetting...',
+              icon: <IconAlert size={14} />,
+              isFactory: true,
+              onConfirm: () => clearAllWorkspaceData({ factoryReset: true }),
+            },
+          ];
 
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <button type="button" className="btn btn--primary" onClick={handleExport}>
-                <IconDownload size={15} />
-                Export full backup (.json)
-              </button>
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <IconUpload size={15} />
-                Import backup
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json,.json"
-                style={{ display: 'none' }}
-                onChange={handleImportFile}
-              />
-            </div>
+          return (
+            <div className="stack-list" style={{ maxWidth: 680, gap: 16 }}>
+              <div className="card form-stack">
+                <div>
+                  <h2 className="card__title">All-in-One Backup &amp; Restore</h2>
+                  <p className="card__sub">
+                    Export a single JSON snapshot containing{' '}
+                    <strong>Tasks ({state.tasks.length})</strong>,{' '}
+                    <strong>Finance ({state.finance.transactions.length} transactions)</strong>, and{' '}
+                    <strong>Settings</strong>.
+                  </p>
+                </div>
 
-            <div style={{ paddingTop: 16, borderTop: '1px solid var(--line)' }}>
-              <h3 className="card__title" style={{ fontSize: 15 }}>
-                Clear sample Tasks &amp; Finance data
-              </h3>
-              <p className="card__sub" style={{ marginBottom: 12 }}>
-                Wipes starter tasks and sample transactions so you can start logging your own real
-                data cleanly.
-              </p>
-
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {!confirmClear ? (
-                  <button
-                    type="button"
-                    className="btn btn--danger"
-                    onClick={() => setConfirmClear(true)}
-                  >
-                    Start fresh (Clear sample data)
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn--primary" onClick={handleExport}>
+                    <IconDownload size={15} />
+                    Export full backup (.json)
                   </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="btn btn--danger"
-                      onClick={() => {
-                        clearToEmpty();
-                        setConfirmClear(false);
-                      }}
-                    >
-                      Confirm clear
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--ghost"
-                      onClick={() => setConfirmClear(false)}
-                    >
-                      Cancel
-                    </button>
-                  </>
-                )}
-
-                {!confirmReset ? (
                   <button
                     type="button"
                     className="btn btn--ghost"
-                    onClick={() => setConfirmReset(true)}
+                    onClick={() => fileInputRef.current?.click()}
                   >
-                    Restore sample data
+                    <IconUpload size={15} />
+                    Import backup
                   </button>
-                ) : (
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/json,.json"
+                    style={{ display: 'none' }}
+                    onChange={handleImportFile}
+                  />
+                </div>
+              </div>
+
+              <div className="card form-stack">
+                <div>
+                  <h2 className="card__title">Clear Data &amp; Reset</h2>
+                  <p className="card__sub">
+                    Choose exactly what to wipe. Tasks and Finance clears support instant Undo;
+                    full workspace resets clear local snapshots cleanly.
+                  </p>
+                </div>
+
+                <div className="stack-list" style={{ gap: 10 }}>
+                  {clearRows.map((row) => {
+                    const isConfirming = confirmAction === row.id;
+                    return (
+                      <div
+                        key={row.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          flexWrap: 'wrap',
+                          padding: '12px 14px',
+                          borderRadius: 14,
+                          background: row.isFactory
+                            ? 'color-mix(in srgb, var(--coral) 10%, var(--well))'
+                            : 'var(--well)',
+                          border: row.isFactory
+                            ? '1px solid color-mix(in srgb, var(--coral) 32%, var(--line))'
+                            : '1px solid var(--line)',
+                        }}
+                      >
+                        <div style={{ minWidth: 200, flex: '1 1 260px' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                fontWeight: 700,
+                                fontSize: 13.5,
+                                color: row.isFactory ? 'var(--bad)' : 'var(--text)',
+                              }}
+                            >
+                              {row.isFactory && <IconAlert size={14} />}
+                              <span>{row.title}</span>
+                            </span>
+                            {row.badge && <span className="pill pill--muted">{row.badge}</span>}
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
+                            {row.description}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {isConfirming ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn--danger btn--sm"
+                                disabled={resetBusy}
+                                onClick={async () => {
+                                  setResetBusy(true);
+                                  try {
+                                    await row.onConfirm();
+                                  } finally {
+                                    setResetBusy(false);
+                                    setConfirmAction(null);
+                                  }
+                                }}
+                              >
+                                {resetBusy && row.busyLabel ? row.busyLabel : row.confirmLabel}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                disabled={resetBusy}
+                                onClick={() => setConfirmAction(null)}
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn--danger btn--sm"
+                              disabled={resetBusy}
+                              onClick={() => setConfirmAction(row.id)}
+                            >
+                              {row.icon}
+                              {row.actionLabel}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div
+                  style={{
+                    paddingTop: 12,
+                    borderTop: '1px solid var(--line)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                    Want realistic sample tasks, budgets &amp; wallets to explore?
+                  </span>
                   <button
                     type="button"
-                    className="btn btn--primary"
+                    className="btn btn--ghost btn--sm"
+                    disabled={resetBusy}
                     onClick={() => {
-                      resetStarterData();
-                      setConfirmReset(false);
+                      setConfirmAction(null);
+                      loadDemoSampleData();
                     }}
                   >
-                    Confirm restore
+                    <IconSparkles size={14} />
+                    Load demo sample data
                   </button>
-                )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </SwapView>
     </>
   );
