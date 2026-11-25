@@ -511,14 +511,14 @@ body,
   place-items: center;
 }
 
-/* Top-left 3-Space Stack Pill (empty .stack__slot placeholders; tiles live in .flyers) */
+/* Top-left 2-Space Stack Pill (empty .stack__slot placeholders; tiles live in .flyers) */
 .stack-wrap {
   position: relative;
   flex: none;
 }
 
 .stack {
-  width: 96px;
+  width: 74px;
   height: 44px;
   border-radius: 999px;
   background: var(--glass);
@@ -545,15 +545,11 @@ body,
 }
 
 .stack__slot:nth-child(1) {
-  left: 9px;
+  left: 10px;
 }
 
 .stack__slot:nth-child(2) {
-  left: 31px;
-}
-
-.stack__slot:nth-child(3) {
-  left: 53px;
+  left: 34px;
 }
 
 .crumb {
@@ -1533,7 +1529,7 @@ body,
     font-size: 13px;
   }
   .stack {
-    width: 86px;
+    width: 64px;
     height: 38px;
   }
   .stack__slot {
@@ -1542,13 +1538,10 @@ body,
     top: 6px;
   }
   .stack__slot:nth-child(1) {
-    left: 7px;
+    left: 8px;
   }
   .stack__slot:nth-child(2) {
-    left: 28px;
-  }
-  .stack__slot:nth-child(3) {
-    left: 49px;
+    left: 29px;
   }
 }
 

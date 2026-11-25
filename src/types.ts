@@ -6,51 +6,14 @@ export type AvatarTone = AccentTone;
 
 export type PageId =
   | 'overview'
-  | 'gym'
   | 'tasks'
   | 'finance'
   | 'modules'
   | 'settings';
 
-export type ModuleId = 'gym' | 'tasks' | 'finance';
+export type ModuleId = 'tasks' | 'finance';
 
-/* ---------- OpenGym Live Snapshot (read from localStorage['gym_state_v1']) ---------- */
-export interface OpenGymRoutineSummary {
-  id: string;
-  name: string;
-  exerciseCount: number;
-}
-
-export interface OpenGymSnapshot {
-  available: boolean;
-  workoutsCount: number;
-  workoutsThisWeek: number;
-  weekTarget: number;
-  streakWeeks: number;
-  totalVolumeThisWeek: number;
-  totalSetsThisWeek: number;
-  unit: 'kg' | 'lb';
-  lastWorkout: {
-    name: string;
-    date: string;
-    vol: number;
-    durationMin: number;
-    sets: number;
-  } | null;
-  todayRoutine: OpenGymRoutineSummary | null;
-  activeWorkout: {
-    name: string;
-    startedAt: number;
-  } | null;
-  latestBodyweight: {
-    weight: number;
-    date: string;
-    target: number | null;
-  } | null;
-  routines: OpenGymRoutineSummary[];
-}
-
-/* ---------- Module 2: Personal Tasks ---------- */
+/* ---------- Module 1: Personal Tasks ---------- */
 export type TaskStatus = 'todo' | 'doing' | 'done';
 export type TaskPriority = 'high' | 'medium' | 'low';
 export type TaskCategory = 'personal' | 'work' | 'health' | 'study' | 'finance';

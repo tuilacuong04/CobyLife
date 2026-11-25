@@ -36,12 +36,6 @@ export const IconSylvaMark: React.FC<IconProps> = ({ size = 18 }) => (
   </svg>
 );
 
-export const IconDumbbell: React.FC<IconProps> = ({ size = 19, style, className }) => (
-  <svg {...base(size, style, className)}>
-    <path d="M6.5 7.5v9M17.5 7.5v9M3.5 9.5v5M20.5 9.5v5M6.5 12h11" />
-  </svg>
-);
-
 export const IconTasks: React.FC<IconProps> = ({ size = 19, style, className }) => (
   <svg {...base(size, style, className)}>
     <rect x="3.5" y="4" width="17" height="16" rx="3.5" />
@@ -70,7 +64,6 @@ export const IconModuleGlyph: React.FC<{ moduleId: ModuleId; size?: number }> = 
   moduleId,
   size = 16,
 }) => {
-  if (moduleId === 'gym') return <IconDumbbell size={size} />;
   if (moduleId === 'tasks') return <IconTasks size={size} />;
   return <IconWallet size={size} />;
 };

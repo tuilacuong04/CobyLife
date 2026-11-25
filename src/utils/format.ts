@@ -120,13 +120,6 @@ export function parseSmartAmount(raw: string): number {
   return Number.isFinite(val) ? Math.round(val) : 0;
 }
 
-export function formatVolume(vol: number, unit: 'kg' | 'lb' = 'kg'): string {
-  if (vol >= 1000) {
-    return unit === 'kg' ? `${(vol / 1000).toFixed(1)}t` : `${(vol / 1000).toFixed(1)}k lb`;
-  }
-  return `${Math.round(vol).toLocaleString('en-US')} ${unit}`;
-}
-
 export function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return 'ME';
@@ -156,7 +149,7 @@ export const TASK_PRIORITY_META: Record<TaskPriority, { label: string; short: st
 export const TASK_CATEGORY_META: Record<TaskCategory, { label: string; tone: AccentTone; pill: string }> = {
   personal: { label: 'Personal', tone: 'sky', pill: 'pill--sky' },
   work: { label: 'Work', tone: 'sand', pill: 'pill--sand' },
-  health: { label: 'Gym & Health', tone: 'lime', pill: 'pill--lime' },
+  health: { label: 'Health & Wellness', tone: 'lime', pill: 'pill--lime' },
   study: { label: 'Learning', tone: 'sky', pill: 'pill--sky' },
   finance: { label: 'Finance', tone: 'coral', pill: 'pill--coral' },
 };

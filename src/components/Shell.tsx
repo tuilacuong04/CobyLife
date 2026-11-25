@@ -21,7 +21,6 @@ import {
   IconChevronRight,
   IconDatabase,
   IconDownload,
-  IconDumbbell,
   IconLock,
   IconMenu,
   IconModuleGlyph,
@@ -29,6 +28,7 @@ import {
   IconMoon,
   IconOverview,
   IconPlus,
+  IconRepeat,
   IconSearch,
   IconSettings,
   IconSidebarToggle,
@@ -40,26 +40,27 @@ import {
 
 const PAGE_LABELS: Record<PageId, string> = {
   overview: 'Overview',
-  gym: 'Gym · openGym',
   tasks: 'Tasks',
   finance: 'Finance',
   modules: 'Modules',
   settings: 'Settings',
 };
 
-const MODULE_IDS: ModuleId[] = ['gym', 'tasks', 'finance'];
-const NAV_IDS: PageId[] = ['overview', 'gym', 'tasks', 'finance', 'modules'];
+const MODULE_IDS: ModuleId[] = ['tasks', 'finance'];
+const NAV_IDS: PageId[] = ['overview', 'tasks', 'finance', 'modules'];
 
+const MOD_COUNT = MODULE_IDS.length; // 2
+const NAV_COUNT = NAV_IDS.length; // 4
 const SIDEBAR_STORAGE_KEY = 'coby_life_sidebar_v1';
 const STAGGER_STEP = 0.036;
-const TOTAL_SIDE_ITEMS = 14; // 0..13
-const TOTAL_FLYERS = 10; // 0..2 module tiles, 3..7 nav items, 8 settings, 9 theme
+const TOTAL_SIDE_ITEMS = 12; // 0..11
+const TOTAL_FLYERS = 8; // 0..1 module tiles, 2..5 nav items, 6 settings, 7 theme
 
-// Flyer 0..9 -> Sidebar item index mapping
+// Flyer 0..7 -> Sidebar item index mapping
 const FLYER_TO_SIDE_IDX = [
-  2, 3, 4, // 3 core modules
-  6, 7, 8, 9, 10, // 5 nav items (overview, gym, tasks, finance, modules)
-  11, 12, // settings, theme
+  2, 3, // 2 core modules (tasks, finance)
+  5, 6, 7, 8, // 4 nav items (overview, tasks, finance, modules)
+  9, 10, // settings, theme
 ];
 
 interface SlotPos {
@@ -71,13 +72,11 @@ interface SlotPos {
 export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const {
     state,
-    gym,
     route,
     drawer,
     modal,
     cloudStatus,
     navigate,
-    openGymView,
     openModal,
     toggleTheme,
     lockApp,
@@ -114,7 +113,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
   const sideItemRefs = useRef<(HTMLElement | null)[]>([]);
   const sideSlotRefs = useRef<(HTMLSpanElement | null)[]>([]);
-  const dockSlotRefs = useRef<(HTMLSpanElement | null)[]>([]); // 0..2 stack, 3..9 dock
+  const dockSlotRefs = useRef<(HTMLSpanElement | null)[]>([]); // 0..1 stack, 2..7 dock
   const flyRefs = useRef<(HTMLDivElement | null)[]>([]);
   const flyRingRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
@@ -125,7 +124,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     side: [],
     collapsed: [],
   });
-  const stackShiftRef = useRef(108);
+  const stackShiftRef = useRef(86);
   const reducedAnimRef = useRef<{ active: boolean; from: number; to: number; t0: number }>({
     active: false,
     from: 0,
@@ -175,7 +174,8 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       if (dEl) {
         const r = dEl.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) {
-          const relX = i < 3 ? r.left - mainRectLeft + r.width / 2 : r.left + r.width / 2;
+          const relX =
+            i < MOD_COUNT ? r.left - mainRectLeft + r.width / 2 : r.left + r.width / 2;
           collapsedSlots[i] = {
             x: relX,
             y: r.top + r.height / 2,
@@ -288,7 +288,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       const cPos = colSlots[i];
 
       if (!desk) {
-        if (i < 3 && cPos) {
+        if (i < MOD_COUNT && cPos) {
           fEl.style.opacity = String(stackFade);
           fEl.style.transform = `translate3d(${(mainLeftLive + cPos.x - 20).toFixed(2)}px, ${(cPos.y - 20).toFixed(2)}px, 0) scale(${(cPos.w / 40).toFixed(3)})`;
           const ring = flyRingRefs.current[i];
@@ -304,17 +304,17 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
         continue;
       }
 
-      const cx = i < 3 ? mainLeftLive + cPos.x : cPos.x;
+      const cx = i < MOD_COUNT ? mainLeftLive + cPos.x : cPos.x;
       const cy = cPos.y;
       const sx = sPos.x;
       const sy = sPos.y - sideScrollTop;
 
-      const t = i < 3 ? easeInOutCubic(clamped) : clamp01(o);
+      const t = i < MOD_COUNT ? easeInOutCubic(clamped) : clamp01(o);
       const x = lerp(cx, sx, t) - 20;
       const y = lerp(cy, sy, t) - 20;
 
       fEl.style.opacity = '1';
-      if (i < 3) {
+      if (i < MOD_COUNT) {
         const scale = lerp(cPos.w, sPos.w, t) / 40;
         fEl.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0) scale(${scale.toFixed(3)})`;
         const ring = flyRingRefs.current[i];
@@ -539,7 +539,6 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
   const navMeta: { id: PageId; label: string; badge?: number }[] = [
     { id: 'overview', label: 'Overview' },
-    { id: 'gym', label: 'Gym (openGym)', badge: gym.activeWorkout ? 1 : undefined },
     { id: 'tasks', label: 'Tasks', badge: pendingTasksToday || openTasksCount || undefined },
     { id: 'finance', label: 'Finance', badge: txThisMonth || undefined },
     { id: 'modules', label: 'Modules', badge: state.futureModules.length || undefined },
@@ -551,19 +550,17 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
   const renderGlyphIcon = (idx: number) => {
     switch (idx) {
-      case 3:
+      case 2:
         return <IconOverview />;
-      case 4:
-        return <IconDumbbell />;
-      case 5:
+      case 3:
         return <IconTasks />;
-      case 6:
+      case 4:
         return <IconWallet />;
-      case 7:
+      case 5:
         return <IconModules />;
-      case 8:
+      case 6:
         return <IconSettings />;
-      case 9:
+      case 7:
         return theme === 'dark' ? <IconSun /> : <IconMoon />;
       default:
         return null;
@@ -580,10 +577,8 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     a.click();
     URL.revokeObjectURL(url);
     setOpenPopover(null);
-    pushToast('Exported full backup (openGym + Tasks + Finance)');
+    pushToast('Exported full backup (Tasks + Finance)');
   };
-
-  const isGymFullBleed = route.page === 'gym';
 
   return (
     <>
@@ -615,10 +610,10 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
             </div>
           );
         })}
-        {Array.from({ length: 7 }, (_, j) => {
-          const idx = 3 + j;
+        {Array.from({ length: NAV_COUNT + 2 }, (_, j) => {
+          const idx = MOD_COUNT + j;
           const isActive =
-            (j < 5 && activeNavIdx === j) || (j === 5 && route.page === 'settings');
+            (j < NAV_COUNT && activeNavIdx === j) || (j === NAV_COUNT && route.page === 'settings');
           return (
             <div
               key={`fly-glyph-${idx}`}
@@ -663,7 +658,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           <div className="dock__sep" />
 
           {navMeta.map((item, j) => {
-            const fIdx = 3 + j;
+            const fIdx = MOD_COUNT + j;
             const active = route.page === item.id;
             return (
               <button
@@ -706,7 +701,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           >
             <span
               ref={(el) => {
-                dockSlotRefs.current[8] = el;
+                dockSlotRefs.current[MOD_COUNT + NAV_COUNT] = el;
               }}
               className="dock__slot"
             />
@@ -730,7 +725,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
           >
             <span
               ref={(el) => {
-                dockSlotRefs.current[9] = el;
+                dockSlotRefs.current[MOD_COUNT + NAV_COUNT + 1] = el;
               }}
               className="dock__slot"
             />
@@ -811,7 +806,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
             <div
               ref={(el) => {
-                sideItemRefs.current[5] = el;
+                sideItemRefs.current[2 + MOD_COUNT] = el;
               }}
               className="side__label"
               style={{ marginTop: 12 }}
@@ -820,13 +815,13 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
             </div>
 
             {navMeta.map((item, j) => {
-              const fIdx = 3 + j;
+              const fIdx = MOD_COUNT + j;
               const active = route.page === item.id;
               return (
                 <button
                   key={item.id}
                   ref={(el) => {
-                    sideItemRefs.current[6 + j] = el;
+                    sideItemRefs.current[3 + MOD_COUNT + j] = el;
                   }}
                   type="button"
                   className={`nav-row ${active ? 'is-active' : ''}`}
@@ -852,7 +847,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
             <div className="side__foot">
               <button
                 ref={(el) => {
-                  sideItemRefs.current[11] = el;
+                  sideItemRefs.current[3 + MOD_COUNT + NAV_COUNT] = el;
                 }}
                 type="button"
                 className={`nav-row ${route.page === 'settings' ? 'is-active' : ''}`}
@@ -860,7 +855,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
               >
                 <span
                   ref={(el) => {
-                    sideSlotRefs.current[8] = el;
+                    sideSlotRefs.current[MOD_COUNT + NAV_COUNT] = el;
                   }}
                   className="nav-row__slot"
                 >
@@ -871,7 +866,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
               <button
                 ref={(el) => {
-                  sideItemRefs.current[12] = el;
+                  sideItemRefs.current[4 + MOD_COUNT + NAV_COUNT] = el;
                 }}
                 type="button"
                 className="nav-row"
@@ -879,7 +874,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
               >
                 <span
                   ref={(el) => {
-                    sideSlotRefs.current[9] = el;
+                    sideSlotRefs.current[MOD_COUNT + NAV_COUNT + 1] = el;
                   }}
                   className="nav-row__slot"
                 >
@@ -892,7 +887,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
               <div
                 ref={(el) => {
-                  sideItemRefs.current[13] = el;
+                  sideItemRefs.current[5 + MOD_COUNT + NAV_COUNT] = el;
                 }}
                 className="side__profile"
                 onClick={() => handleNav('settings', 'profile')}
@@ -1036,7 +1031,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                   </span>
                   <span className="pop-item__text">
                     <span className="pop-item__title">New task</span>
-                    <span className="pop-item__sub">Add a personal to-do & due date</span>
+                    <span className="pop-item__sub">Add a personal to-do &amp; due date</span>
                   </span>
                 </button>
                 <button
@@ -1076,15 +1071,15 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                   className="pop-item"
                   onClick={() => {
                     setOpenPopover(null);
-                    openGymView('#/home');
+                    openModal({ kind: 'new-tx', defaultType: 'transfer' });
                   }}
                 >
-                  <span className="pop-item__tile tile--lime">
-                    <IconDumbbell size={15} />
+                  <span className="pop-item__tile tile--sand">
+                    <IconRepeat size={15} />
                   </span>
                   <span className="pop-item__text">
-                    <span className="pop-item__title">Start workout</span>
-                    <span className="pop-item__sub">Jump straight into openGym</span>
+                    <span className="pop-item__title">Transfer funds</span>
+                    <span className="pop-item__sub">Move money between wallets</span>
                   </span>
                 </button>
               </AnimatedPopover>
@@ -1199,7 +1194,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                     </span>
                     <span className="pop-item__text">
                       <span className="pop-item__title">Export JSON backup</span>
-                      <span className="pop-item__sub">openGym + Tasks + Finance</span>
+                      <span className="pop-item__sub">Tasks, Finance &amp; Settings</span>
                     </span>
                   </button>
                 </div>
@@ -1219,7 +1214,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                     </span>
                     <span className="pop-item__text">
                       <span className="pop-item__title">Dark theme</span>
-                      <span className="pop-item__sub">Syncs with openGym</span>
+                      <span className="pop-item__sub">Smoked Glass / Milk Glass</span>
                     </span>
                     <span
                       className={`switch ${theme === 'dark' ? 'is-on' : ''}`}
@@ -1252,13 +1247,8 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
             </div>
           </div>
 
-          <div
-            ref={scrollRef}
-            className={`scroll ${isGymFullBleed ? 'scroll--gym' : ''}`}
-          >
-            <div className={isGymFullBleed ? 'page-inner page-inner--gym' : 'page-inner'}>
-              {children}
-            </div>
+          <div ref={scrollRef} className="scroll">
+            <div className="page-inner">{children}</div>
           </div>
         </div>
       </div>

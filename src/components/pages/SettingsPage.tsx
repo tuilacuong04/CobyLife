@@ -33,7 +33,6 @@ const AVATAR_OPTIONS = [
 export const SettingsPage: React.FC = () => {
   const {
     state,
-    gym,
     route,
     cloudConfig,
     cloudStatus,
@@ -121,7 +120,7 @@ export const SettingsPage: React.FC = () => {
     a.download = `coby-life-backup-${localIsoDate()}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    pushToast('Exported unified backup (openGym + Tasks + Finance)');
+    pushToast('Exported backup (Tasks + Finance)');
   };
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -307,7 +306,7 @@ export const SettingsPage: React.FC = () => {
                     </div>
                     <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
                       {cloudStatus.state === 'synced'
-                        ? `Auto-syncing openGym + Tasks + Finance${formattedSyncTime ? ` · Last synced ${formattedSyncTime}` : ''}`
+                        ? `Auto-syncing Tasks + Finance${formattedSyncTime ? ` · Last synced ${formattedSyncTime}` : ''}`
                         : cloudStatus.state === 'syncing'
                           ? 'Syncing snapshot with Cloud DB...'
                           : cloudStatus.state === 'error'
@@ -382,9 +381,9 @@ export const SettingsPage: React.FC = () => {
               <div>
                 <h2 className="card__title">Personal Cloud Database</h2>
                 <p className="card__sub">
-                  Store your entire personal workspace (<strong>openGym</strong>,{' '}
-                  <strong>Tasks</strong>, <strong>Finance</strong> &amp; <strong>Settings</strong>)
-                  in your own private database. Credentials stay only on your devices.
+                  Store your entire personal workspace (<strong>Tasks</strong>,{' '}
+                  <strong>Finance</strong> &amp; <strong>Settings</strong>) in your own private
+                  database. Credentials stay only on your devices.
                 </p>
               </div>
 
@@ -636,7 +635,7 @@ export const SettingsPage: React.FC = () => {
             <div>
               <h2 className="card__title">Theme</h2>
               <p className="card__sub" style={{ marginBottom: 12 }}>
-                Syncs Dark / Light mode across Coby LIFE and embedded openGym.
+                Switch between Dark (Smoked Glass) and Light (Milk Glass) across Coby LIFE.
               </p>
               <div className="seg">
                 <button
@@ -734,9 +733,9 @@ export const SettingsPage: React.FC = () => {
               <h2 className="card__title">All-in-One Backup &amp; Restore</h2>
               <p className="card__sub">
                 Export a single JSON snapshot containing{' '}
-                <strong>openGym ({gym.workoutsCount} workouts)</strong>,{' '}
-                <strong>Tasks ({state.tasks.length})</strong>, and{' '}
-                <strong>Finance ({state.finance.transactions.length} transactions)</strong>.
+                <strong>Tasks ({state.tasks.length})</strong>,{' '}
+                <strong>Finance ({state.finance.transactions.length} transactions)</strong>, and{' '}
+                <strong>Settings</strong>.
               </p>
             </div>
 
@@ -768,7 +767,7 @@ export const SettingsPage: React.FC = () => {
               </h3>
               <p className="card__sub" style={{ marginBottom: 12 }}>
                 Wipes starter tasks and sample transactions so you can start logging your own real
-                data cleanly (keeps openGym untouched).
+                data cleanly.
               </p>
 
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
