@@ -1,0 +1,125 @@
+# Coby LIFE — Project Handoff & Engineering Context
+
+> Read this file first when resuming work in a new workspace or Antigravity account.
+
+## 1. Product Overview & User Preferences
+- **App Name:** **Coby LIFE** (`Coby LIFE — Personal OS: Gym · Tasks · Finance`)
+- **Owner & Audience:** Single-user personal modular web hub for **Cuong** (`tuilacuong04`).
+- **Live Production URL:** https://tuilacuong04.github.io/Demo_APP/
+- **Repository:** https://github.com/tuilacuong04/Demo_APP (currently **Public** for free GitHub Pages)
+- **Communication Language:** User prefers **Vietnamese** in chat; **UI language MUST stay crisp English** across both Coby LIFE and embedded `openGym` so typography/layout proportions match cleanly (while keeping full **VND `₫` / USD `$`** currency support and shorthand amount parsing like `50k`, `1.5m`, `1.5tr`).
+- **Default Landing Page:** Opens straight to **`Overview`** (`/Demo_APP/` → `overview`).
+- **Visual Style:** Smoked Glass (Dark, default) & Milk Glass (Light) using `Urbanist` font, lime accent `#c4ef4f`, GSAP + 240 Hz spring sidebar/dock/flyer morphs, bottom-sheet modals/drawers on mobile.
+
+---
+
+## 2. Core Modules & Extensible Architecture
+1. **Gym (`openGym`) — `opengym/` + `src/components/pages/GymPage.tsx`**
+   - Full integration of [`DuarteSantos8/openGym`](https://github.com/DuarteSantos8/openGym) embedded persistently via iframe (so active workouts & rest timers survive tab switches).
+   - Syncs theme (`hub:set-theme`), deep-link navigation (`hub:navigate`), live snapshot (`opengym:state-updated` → `src/utils/opengymBridge.ts`), and remote DB restore (`hub:reload-state`).
+   - Built with `VITE_DEMO=1` into `public/opengym/` (gitignored on `main`), default `lang: 'en'` with one-time browser migration flag `gym_lang_en_v1` in `opengym/frontend/src/main.jsx`.
+   - **Exercise Media (6,554 `.webp` stills + 6,554 `.mp4` animations + `NOTICE.md`):**
+     - Hosted unmodified at 180px on the `gh-pages` branch under `opengym/exercise-media/`.
+     - **Licensing rule (`opengym/NOTICE.md`):** openGym code is AGPL-3.0 (`opengym/LICENSE` + `opengym/NOTICE.md` must stay preserved). Never hotlink GymVisual media from upstream openGym; keep unmodified 180px copies together with `NOTICE.md` for non-commercial personal use.
+2. **Personal Tasks — `src/components/pages/TasksPage.tsx`**
+   - Agenda, drag-and-drop Kanban board (`.deal-card`), and All-list view; 1-line quick-add, subtasks, pinning, priorities, categories, recurring schedules, slide-over/bottom-sheet edit drawer (`src/components/Drawers.tsx`).
+3. **Personal Finance — `src/components/pages/FinancePage.tsx`**
+   - Multi-wallet expense/income/transfer tracker, shorthand amount input (`50k`, `1.2m`, `1.5tr`), VND/USD display, 6-month dual cashflow chart, monthly category budgets (80%/100% alerts), CSV export.
+4. **Extensible Module Registry (`#4+`) — `src/modules/registry.ts` + `src/components/pages/ModulesPage.tsx`**
+   - Plug future modules (e.g., Daily Habits, Nutrition/Macros, Notes, Books) by adding an ID to `src/types.ts`, registering in `src/modules/registry.ts`, and mounting its page in `src/App.tsx`.
+
+---
+
+## 3. Data Persistence & Personal Cloud DB (`src/utils/cloudDb.ts`)
+- **Local Storage + Durable IndexedDB:**
+  - `localStorage['coby_life_os_v1']` (auto-migrates legacy `sylva_personal_os_v2`) + `localStorage['gym_state_v1']` (openGym).
+  - Automatically mirrored into **IndexedDB (`coby_life_idb`)** as a unified snapshot (`coby-life-backup-v1`) on every Personal OS or openGym change.
+- **Cloud DB Sync (`Settings → Cloud DB` in `src/components/pages/SettingsPage.tsx`):**
+  - Supports **Supabase PostgreSQL** (recommended; free 500 MB tier; 1-click copyable `SUPABASE_SETUP_SQL` creates RLS-locked `public.coby_vault` + SHA-256 secret-checked `SECURITY DEFINER` RPCs `coby_vault_pull` & `coby_vault_push`) and **GitHub Private Gist** (`coby-life-db.json`).
+  - Bidirectional auto-sync: debounced push (1.4s) after any Tasks/Finance/Settings/openGym change, auto-pull on app launch & window focus (timestamp-compared).
+  - **Device Pairing (`COBYDB:...`):** 1-click *Copy device code* / *Apply code* to link iPhone ↔ Laptop without retyping credentials. Credentials are stored **only** in device `localStorage['coby_cloud_db_config_v1']` and never committed to Git.
+- **Manual Backup & PIN Lock:**
+  - All-in-one JSON export/import (`coby-life-backup-YYYY-MM-DD.json`) in Account popover & `Settings → Data & Backup`.
+  - Optional local PIN lock (`src/components/PinLockView.tsx`).
+
+---
+
+## 4. Key Architecture & Gotchas (Do Not Regress!)
+1. **GitHub Pages Deployment Constraint:**
+   - The user's GitHub account has custom GitHub Actions workflows blocked by a billing lock, **HOWEVER** GitHub Pages legacy deployment (`build_type: legacy`, branch `gh-pages`, job `pages-build-deployment`) runs and succeeds normally.
+   - **Always deploy updates by pushing a fast delta commit to `gh-pages`**, keeping `opengym/exercise-media/` (all 13,108 files) untouched so you don't re-upload 250 MB of media!
+2. **Keep `main` Clean:**
+   - Never commit `public/opengym/` or `node_modules/` to `main`. Always make changes via feature branches + PRs into `main`.
+3. **Mobile Sidebar & Flyers Z-Index Hierarchy:**
+   - `.main`: `z-index: 10`, `.flyers`: `z-index: 30`, mobile `.scrim`: `z-index: 95`, mobile `.side`: `z-index: 98`, `.popover`: `z-index: 160`, `.drawer-backdrop`: `z-index: 200`, `.modal-backdrop`: `z-index: 250`.
+   - Never raise `.flyers` above `.side` on mobile, and keep `Shell.tsx` fading the topbar stack flyers (`i < 3`) with `stackFade` when opening the mobile sidebar.
+4. **Sliding Segmented Pills (`src/utils/motion.ts` + `src/components/Motion.tsx`):**
+   - `animateClipPill` measures layout-space `offsetLeft / offsetTop / offsetWidth / offsetHeight` (immune to CSS `transform` and horizontal scrolling in `.seg` / `.tabs`).
+   - `animateIconBounce` must ONLY animate inner `<svg>` icons — never scale text buttons.
+
+---
+
+## 5. Build & Deploy Commands
+
+### Local Development
+```bash
+npm install
+npm run dev
+```
+
+### Production Build (Hub only — fast, when `opengym/` didn't change)
+```bash
+npx tsc
+npx vite build --base /Demo_APP/
+cp dist/index.html dist/404.html
+touch dist/.nojekyll
+```
+
+### Full Rebuild Including `openGym` (only needed when editing `opengym/frontend/`)
+```bash
+npm --prefix opengym/frontend ci
+VITE_DEMO=1 npm run build:opengym
+# Note: to re-stage 180px media locally, clone DuarteSantos8/openGym shallowly and run its scripts/catalogue/stage-media.mjs targeting public/opengym/exercise-media
+npx tsc && npx vite build --base /Demo_APP/
+cp dist/index.html dist/404.html && touch dist/.nojekyll
+```
+
+### Fast Delta Deploy to Live GitHub Pages (`gh-pages` branch, preserving 13,108 exercise media files)
+```bash
+TMP_PAGES="/tmp/gh-pages-delta"
+rm -rf "$TMP_PAGES"
+git clone --depth 1 --branch gh-pages https://github.com/tuilacuong04/Demo_APP.git "$TMP_PAGES"
+
+rm -rf "$TMP_PAGES/assets" "$TMP_PAGES/images"
+cp dist/index.html dist/404.html dist/favicon.svg dist/.nojekyll "$TMP_PAGES/"
+cp -R dist/assets "$TMP_PAGES/assets"
+cp -R dist/images "$TMP_PAGES/images"
+# If opengym/frontend changed, also sync dist/opengym/* EXCEPT exercise-media/
+
+git -C "$TMP_PAGES" add -A
+git -C "$TMP_PAGES" commit -m "deploy: <short description>"
+git -C "$TMP_PAGES" push origin gh-pages
+rm -rf "$TMP_PAGES"
+
+# Watch GitHub Pages deploy
+RUN_ID=$(gh run list --branch gh-pages --limit 1 --json databaseId -q '.[0].databaseId')
+gh run watch "$RUN_ID" --exit-status
+```
+
+---
+
+## 6. Completed History (PRs Merged on `main`)
+- **PR #1:** GitHub Pages base-path routing & workflow setup.
+- **PR #2:** Full transformation to Personal OS (openGym + Tasks + Finance + Modules + unified backup).
+- **PR #3:** Staged all 6,554 `.webp` stills + 6,554 `.mp4` animations + `NOTICE.md` on `gh-pages`.
+- **PR #4:** Switched entire Personal OS & openGym UI to English (with auto-migration from `'vi'`).
+- **PR #5:** Fixed mobile sidebar overlap, scrim dismiss, iOS safe-area scrolling, bottom-sheet modals/drawers, and mobile Finance/Tasks/Gym responsive polish.
+- **PR #6:** Rebranded `Sylva LIFE → Coby LIFE`, redesigned Account popover, and added IndexedDB + Cloud DB Sync (Supabase PostgreSQL / GitHub Private Gist + `COBYDB:` device pairing).
+- **PR #7:** Eliminated sliding segmented pill text overflow across all tabs (`Settings`, `Finance`, `Tasks`) and styled Tasks Kanban `.deal-card` surfaces.
+
+## 7. Good Next Ideas (Pending User Request)
+- Add PWA (`manifest.webmanifest` + app icons + Service Worker) for true full-screen iPhone *Add to Home Screen* launch.
+- Optional mobile bottom tab bar (`Overview · Gym · Tasks · Finance`) for one-thumb navigation.
+- Custom Finance categories CRUD on UI, recurring monthly bills, and custom salary-day billing cycle.
+- Optional start-clean default mode for `openGym` (disable 12-week fabricated demo history once user connects real Cloud DB).
+- Module #4+ (Daily Habits, Nutrition/Macros synced with Gym, Second Brain Notes, etc.).
