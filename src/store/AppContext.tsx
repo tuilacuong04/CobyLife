@@ -18,8 +18,15 @@ import {
   ToastItem,
   UserProfile,
 } from '../types';
+import {
+  AuthUser,
+  getInitialSessionUser,
+  signOutCloud,
+  subscribeAuthChanges,
+} from '../utils/auth';
 import { createDemoSampleState, createEmptyPersonalState, createStarterState } from '../data/seedData';
 import {
+  clearAppState,
   getLocalUpdatedAt,
   hasStoredAppState,
   loadAppState,
@@ -36,8 +43,10 @@ import {
   isCloudConfigValid,
   loadCloudConfig,
   loadLocalIdbSnapshot,
+  pullAuthenticatedUserVault,
   pullFromCloudDb,
   pullSupabaseInboxItems,
+  pushAuthenticatedUserVault,
   pushToCloudDb,
   saveCloudConfigToStorage,
   saveLocalIdbSnapshot,
@@ -121,6 +130,12 @@ function uid(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`;
 }
 
+function parseIsoMs(iso?: string | null): number {
+  if (!iso) return 0;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 export interface ReconcileOptions {
   walletId: string;
   targetBalance: number;
@@ -137,6 +152,9 @@ export interface ApproveInboxOptions {
 }
 
 interface AppContextValue {
+  authUser: AuthUser | null;
+  authReady: boolean;
+  signOutWorkspace: () => Promise<void>;
   state: PersistedAppState;
   route: RouteState;
   navDir: number;
@@ -235,37 +253,37 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<PersistedAppState>(() => loadAppState());
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [state, setState] = useState<PersistedAppState>(() => createEmptyPersonalState());
   const [route, setRoute] = useState<RouteState>(() => parseLocation());
   const [navDir, setNavDir] = useState(1);
-  const [locked, setLocked] = useState<boolean>(() => loadAppState().settings.pinEnabled);
+  const [locked, setLocked] = useState<boolean>(false);
   const [drawer, setDrawer] = useState<DrawerState>(null);
   const [modal, setModal] = useState<ModalState>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [cloudConfig, setCloudConfig] = useState<CloudDbConfig>(() => loadCloudConfig());
   const [gmailSyncing, setGmailSyncing] = useState(false);
   const [lastGmailSyncAt, setLastGmailSyncAt] = useState<string | null>(null);
-  const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>(() => {
-    const cfg = loadCloudConfig();
-    return {
-      state: isCloudConfigValid(cfg) ? 'syncing' : 'local',
-      provider: isCloudConfigValid(cfg) ? cfg.provider : 'none',
-      lastSyncedAt: null,
-      localDbReady: false,
-    };
+  const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>({
+    state: 'local',
+    provider: 'none',
+    lastSyncedAt: null,
+    localDbReady: false,
   });
 
   const stateRef = useRef(state);
   stateRef.current = state;
+  const authUserRef = useRef(authUser);
+  authUserRef.current = authUser;
   const routeRef = useRef(route);
   routeRef.current = route;
   const cloudConfigRef = useRef(cloudConfig);
   cloudConfigRef.current = cloudConfig;
   const exitTweenRef = useRef<gsap.core.Tween | null>(null);
-  const hydratedRef = useRef(false);
-  const skipNextPushRef = useRef(false);
-  const skipNextPersistRef = useRef(false);
-  const skipNextIdbRef = useRef(false);
+  const activeUserIdRef = useRef<string | null>(null);
+  const vaultHydratedForUserRef = useRef<string | null>(null);
+  const skipPersistForStateRef = useRef<PersistedAppState | null>(null);
   const pushTimerRef = useRef<number | null>(null);
   const lastFocusPullRef = useRef(0);
 
@@ -290,17 +308,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  const applyVaultPayload = useCallback((payload: UnifiedVaultPayload) => {
-    skipNextPushRef.current = true;
+  const applyVaultPayload = useCallback((payload: UnifiedVaultPayload, userId?: string) => {
+    const targetUserId = userId ?? activeUserIdRef.current ?? undefined;
     if (payload.personalOs && typeof payload.personalOs === 'object') {
       const normalized = normalizePersistedState(payload.personalOs);
-      saveAppState(normalized);
+      saveAppState(normalized, targetUserId);
+      skipPersistForStateRef.current = normalized;
+      stateRef.current = normalized;
       setState(normalized);
     }
     if (payload.updatedAt) {
-      setLocalUpdatedAt(payload.updatedAt);
+      setLocalUpdatedAt(payload.updatedAt, targetUserId);
     }
-    void saveLocalIdbSnapshot(payload);
+    void saveLocalIdbSnapshot(payload, targetUserId);
   }, []);
 
   const ingestRawGmailPayloads = useCallback((rawItems: RawGmailPayloadItem[]): number => {
@@ -378,128 +398,246 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [ingestRawGmailPayloads, pushToast]
   );
 
-  const scheduleCloudPush = useCallback(() => {
-    const cfg = cloudConfigRef.current;
-    if (!cfg.autoSync || !isCloudConfigValid(cfg)) return;
-    if (pushTimerRef.current) {
-      window.clearTimeout(pushTimerRef.current);
-    }
-    pushTimerRef.current = window.setTimeout(async () => {
-      pushTimerRef.current = null;
-      const liveCfg = cloudConfigRef.current;
-      if (!isCloudConfigValid(liveCfg)) return;
-      const nowIso = getLocalUpdatedAt() || new Date().toISOString();
-      const payload = buildVaultPayload(nowIso);
-      setCloudStatus((prev) => ({ ...prev, state: 'syncing', error: undefined }));
-      try {
-        const res = await pushToCloudDb(liveCfg, payload);
-        if (res.createdGistId && liveCfg.provider === 'gist' && !liveCfg.gistId) {
-          const updatedCfg = { ...liveCfg, gistId: res.createdGistId };
-          saveCloudConfigToStorage(updatedCfg);
-          setCloudConfig(updatedCfg);
+  const scheduleCloudPush = useCallback(
+    (userId: string) => {
+      if (vaultHydratedForUserRef.current !== userId) return;
+      if (pushTimerRef.current) {
+        window.clearTimeout(pushTimerRef.current);
+      }
+      pushTimerRef.current = window.setTimeout(async () => {
+        pushTimerRef.current = null;
+        if (activeUserIdRef.current !== userId || vaultHydratedForUserRef.current !== userId) {
+          return;
         }
+        const nowIso = getLocalUpdatedAt(userId) || new Date().toISOString();
+        const payload = buildVaultPayload(nowIso);
         setCloudStatus((prev) => ({
           ...prev,
-          state: 'synced',
-          provider: liveCfg.provider,
-          lastSyncedAt: new Date().toISOString(),
+          state: 'syncing',
+          provider: 'supabase',
           error: undefined,
         }));
-      } catch (err) {
-        setCloudStatus((prev) => ({
-          ...prev,
-          state: 'error',
-          error: err instanceof Error ? err.message : 'Cloud DB push failed',
-        }));
-      }
-    }, 1400);
-  }, [buildVaultPayload]);
+        try {
+          await pushAuthenticatedUserVault(userId, payload);
+          if (activeUserIdRef.current !== userId) return;
+          setCloudStatus((prev) => ({
+            ...prev,
+            state: 'synced',
+            provider: 'supabase',
+            lastSyncedAt: new Date().toISOString(),
+            error: undefined,
+          }));
+        } catch (err) {
+          if (activeUserIdRef.current !== userId) return;
+          setCloudStatus((prev) => ({
+            ...prev,
+            state: 'error',
+            provider: 'supabase',
+            error: err instanceof Error ? err.message : 'Cloud sync failed',
+          }));
+        }
+      }, 800);
+    },
+    [buildVaultPayload]
+  );
 
-  // Persist locally to localStorage + IndexedDB, then debounce Cloud DB sync
-  useEffect(() => {
-    if (!hydratedRef.current) {
-      hydratedRef.current = true;
-      saveAppState(state);
-      return;
-    }
-    if (skipNextPersistRef.current) {
-      skipNextPersistRef.current = false;
-      return;
-    }
-    saveAppState(state);
-    const nowIso = new Date().toISOString();
-    setLocalUpdatedAt(nowIso);
-    if (skipNextIdbRef.current) {
-      skipNextIdbRef.current = false;
-    } else {
-      void saveLocalIdbSnapshot(buildVaultPayload(nowIso));
-    }
-    if (skipNextPushRef.current) {
-      skipNextPushRef.current = false;
-      return;
-    }
-    scheduleCloudPush();
-  }, [state, buildVaultPayload, scheduleCloudPush]);
-
-  // Initial IndexedDB recovery & Cloud DB + Gmail Inbox pull on mount
+  // Initialize Supabase Auth session and subscribe to auth state changes
   useEffect(() => {
     let active = true;
-    (async () => {
-      if (!hasStoredAppState()) {
-        const idbSnap = await loadLocalIdbSnapshot();
-        if (active && idbSnap?.personalOs) {
-          applyVaultPayload(idbSnap);
-        }
-      }
-      const ok = await saveLocalIdbSnapshot(buildVaultPayload(getLocalUpdatedAt() || new Date().toISOString()));
-      if (!active) return;
-      setCloudStatus((prev) => ({ ...prev, localDbReady: ok }));
-
-      const cfg = cloudConfigRef.current;
-      if (!isCloudConfigValid(cfg) || !cfg.autoSync) {
-        setCloudStatus((prev) => ({ ...prev, state: 'local', provider: 'none' }));
-        return;
-      }
-
-      setCloudStatus((prev) => ({ ...prev, state: 'syncing', provider: cfg.provider, error: undefined }));
-      try {
-        const remote = await pullFromCloudDb(cfg);
+    void getInitialSessionUser()
+      .then((user) => {
         if (!active) return;
-        const localTs = getLocalUpdatedAt();
-        if (remote?.payload && (!localTs || remote.updatedAt > localTs)) {
-          applyVaultPayload(remote.payload);
-        } else if (!remote) {
-          const nowIso = localTs || new Date().toISOString();
-          setLocalUpdatedAt(nowIso);
-          const res = await pushToCloudDb(cfg, buildVaultPayload(nowIso));
-          if (res.createdGistId && cfg.provider === 'gist' && !cfg.gistId) {
-            const nextCfg = { ...cfg, gistId: res.createdGistId };
-            saveCloudConfigToStorage(nextCfg);
-            setCloudConfig(nextCfg);
+        setAuthUser(user);
+        setAuthReady(true);
+      })
+      .catch(() => {
+        if (!active) return;
+        setAuthUser(null);
+        setAuthReady(true);
+      });
+
+    const unsubscribe = subscribeAuthChanges((user) => {
+      if (!active) return;
+      setAuthUser((prev) => {
+        if (
+          prev?.id === user?.id &&
+          prev?.email === user?.email &&
+          prev?.displayName === user?.displayName
+        ) {
+          return prev;
+        }
+        return user;
+      });
+      setAuthReady(true);
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Persist user-scoped state locally + IDB, then schedule 800ms debounced Cloud push once hydrated
+  useEffect(() => {
+    if (skipPersistForStateRef.current === state) {
+      skipPersistForStateRef.current = null;
+      return;
+    }
+    const userId = activeUserIdRef.current;
+    if (!userId) return;
+
+    saveAppState(state, userId);
+    const nowIso = new Date().toISOString();
+    setLocalUpdatedAt(nowIso, userId);
+    void saveLocalIdbSnapshot(buildVaultPayload(nowIso), userId);
+
+    if (vaultHydratedForUserRef.current === userId) {
+      scheduleCloudPush(userId);
+    }
+  }, [state, buildVaultPayload, scheduleCloudPush]);
+
+  const authUserId = authUser?.id || null;
+
+  // Hydrate & isolate per-user workspace whenever authenticated user changes
+  useEffect(() => {
+    if (!authReady) return;
+    let active = true;
+
+    if (pushTimerRef.current) {
+      window.clearTimeout(pushTimerRef.current);
+      pushTimerRef.current = null;
+    }
+
+    const userId = authUserId;
+    activeUserIdRef.current = userId;
+    vaultHydratedForUserRef.current = null;
+
+    if (!userId) {
+      const empty = createEmptyPersonalState();
+      skipPersistForStateRef.current = empty;
+      stateRef.current = empty;
+      setState(empty);
+      setLocked(false);
+      setDrawer(null);
+      setModal(null);
+      setLastGmailSyncAt(null);
+      setCloudStatus({
+        state: 'local',
+        provider: 'none',
+        lastSyncedAt: null,
+        localDbReady: false,
+      });
+      return () => {
+        active = false;
+      };
+    }
+
+    const displayName = authUserRef.current?.displayName || 'User';
+    const hasLocal = hasStoredAppState(userId);
+    const loaded = loadAppState(userId);
+    if (!hasLocal && displayName) {
+      loaded.settings.profile.name = displayName;
+    }
+    skipPersistForStateRef.current = loaded;
+    stateRef.current = loaded;
+    setState(loaded);
+    setLocked(loaded.settings.pinEnabled);
+    setCloudStatus({
+      state: 'syncing',
+      provider: 'supabase',
+      lastSyncedAt: null,
+      localDbReady: true,
+    });
+
+    (async () => {
+      try {
+        if (!hasLocal) {
+          const idbSnap = await loadLocalIdbSnapshot(userId);
+          if (!active || activeUserIdRef.current !== userId) return;
+          if (idbSnap?.personalOs) {
+            applyVaultPayload(idbSnap, userId);
           }
         }
-        // Also drain any pending Gmail items waiting in coby_finance_inbox (~150ms)
-        if (cfg.provider === 'supabase') {
+
+        const remote = await pullAuthenticatedUserVault(userId);
+        if (!active || activeUserIdRef.current !== userId) return;
+
+        const localTs = getLocalUpdatedAt(userId);
+        const remoteMs = parseIsoMs(remote?.updatedAt);
+        const localMs = parseIsoMs(localTs);
+
+        if (remote?.payload && (!localTs || localMs === 0 || remoteMs >= localMs)) {
+          applyVaultPayload(remote.payload, userId);
+          if (!hasLocal && remote.payload.personalOs) {
+            const normalized = normalizePersistedState(remote.payload.personalOs);
+            setLocked(normalized.settings.pinEnabled);
+          }
+        } else if (remote?.payload && localMs > remoteMs) {
+          const payload: UnifiedVaultPayload = {
+            format: 'coby-life-backup-v1',
+            updatedAt: localTs || new Date().toISOString(),
+            personalOs: stateRef.current,
+          };
+          await saveLocalIdbSnapshot(payload, userId);
+          await pushAuthenticatedUserVault(userId, payload);
+        } else {
+          const seedState = hasLocal
+            ? stateRef.current
+            : (() => {
+                const empty = createEmptyPersonalState();
+                empty.settings.profile.name = displayName;
+                return empty;
+              })();
+          const nowIso = localTs || new Date().toISOString();
+          if (!hasLocal) {
+            skipPersistForStateRef.current = seedState;
+            stateRef.current = seedState;
+            saveAppState(seedState, userId);
+            setState(seedState);
+          }
+          setLocalUpdatedAt(nowIso, userId);
+          const seedPayload: UnifiedVaultPayload = {
+            format: 'coby-life-backup-v1',
+            updatedAt: nowIso,
+            personalOs: seedState,
+          };
+          await saveLocalIdbSnapshot(seedPayload, userId);
+          await pushAuthenticatedUserVault(userId, seedPayload);
+        }
+
+        if (!active || activeUserIdRef.current !== userId) return;
+        vaultHydratedForUserRef.current = userId;
+
+        const cfg = cloudConfigRef.current;
+        if (cfg.provider === 'supabase' && isCloudConfigValid(cfg)) {
           const inboxRes = await pullSupabaseInboxItems(cfg);
-          if (active && inboxRes.ok && inboxRes.items.length > 0) {
+          if (
+            active &&
+            activeUserIdRef.current === userId &&
+            inboxRes.ok &&
+            inboxRes.items.length > 0
+          ) {
             ingestRawGmailPayloads(inboxRes.items);
           }
         }
-        setCloudStatus((prev) => ({
-          ...prev,
+
+        if (!active || activeUserIdRef.current !== userId) return;
+        setCloudStatus({
           state: 'synced',
-          provider: cfg.provider,
+          provider: 'supabase',
           lastSyncedAt: new Date().toISOString(),
+          localDbReady: true,
           error: undefined,
-        }));
+        });
       } catch (err) {
-        if (!active) return;
-        setCloudStatus((prev) => ({
-          ...prev,
+        if (!active || activeUserIdRef.current !== userId) return;
+        setCloudStatus({
           state: 'error',
-          provider: cfg.provider,
-          error: err instanceof Error ? err.message : 'Cloud DB sync failed',
-        }));
+          provider: 'supabase',
+          lastSyncedAt: null,
+          localDbReady: true,
+          error: err instanceof Error ? err.message : 'Cloud sync failed',
+        });
       }
     })();
 
@@ -507,44 +645,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       active = false;
       if (pushTimerRef.current) {
         window.clearTimeout(pushTimerRef.current);
+        pushTimerRef.current = null;
       }
     };
-  }, [applyVaultPayload, buildVaultPayload, ingestRawGmailPayloads]);
+  }, [authReady, authUserId, applyVaultPayload, ingestRawGmailPayloads]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', state.settings.theme);
   }, [state.settings.theme]);
 
-  // Auto-pull newer Cloud DB & pending Gmail Inbox items on window focus
+  // Auto-pull newer user vault & pending Gmail Inbox items on window focus (>10s throttle)
   useEffect(() => {
     const onFocus = () => {
-      const cfg = cloudConfigRef.current;
+      const userId = activeUserIdRef.current;
+      if (!userId || pushTimerRef.current !== null) return;
       const now = Date.now();
-      if (cfg.autoSync && isCloudConfigValid(cfg) && now - lastFocusPullRef.current > 15000) {
-        lastFocusPullRef.current = now;
-        void pullFromCloudDb(cfg)
-          .then(async (remote) => {
-            const localTs = getLocalUpdatedAt();
-            if (remote?.payload && remote.updatedAt && (!localTs || remote.updatedAt > localTs)) {
-              applyVaultPayload(remote.payload);
+      if (now - lastFocusPullRef.current <= 10000) return;
+      lastFocusPullRef.current = now;
+
+      void pullAuthenticatedUserVault(userId)
+        .then(async (remote) => {
+          if (activeUserIdRef.current !== userId || pushTimerRef.current !== null) return;
+          const localTs = getLocalUpdatedAt(userId);
+          const remoteMs = parseIsoMs(remote?.updatedAt);
+          const localMs = parseIsoMs(localTs);
+          if (remote?.payload && remote.updatedAt && (!localTs || localMs === 0 || remoteMs > localMs)) {
+            applyVaultPayload(remote.payload, userId);
+          }
+          vaultHydratedForUserRef.current = userId;
+
+          const cfg = cloudConfigRef.current;
+          if (cfg.provider === 'supabase' && isCloudConfigValid(cfg)) {
+            const inboxRes = await pullSupabaseInboxItems(cfg);
+            if (activeUserIdRef.current === userId && inboxRes.ok && inboxRes.items.length > 0) {
+              ingestRawGmailPayloads(inboxRes.items);
             }
-            if (cfg.provider === 'supabase') {
-              const inboxRes = await pullSupabaseInboxItems(cfg);
-              if (inboxRes.ok && inboxRes.items.length > 0) {
-                ingestRawGmailPayloads(inboxRes.items);
-              }
-            }
-            setCloudStatus((prev) => ({
-              ...prev,
-              state: 'synced',
-              lastSyncedAt: new Date().toISOString(),
-              error: undefined,
-            }));
-          })
-          .catch(() => {
-            // Silent on background focus refresh
-          });
-      }
+          }
+          setCloudStatus((prev) => ({
+            ...prev,
+            state: 'synced',
+            provider: 'supabase',
+            lastSyncedAt: new Date().toISOString(),
+            error: undefined,
+          }));
+        })
+        .catch(() => {
+          // Silent on background focus refresh
+        });
     };
 
     window.addEventListener('focus', onFocus);
@@ -1751,13 +1898,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [pushToast]);
 
   const clearToEmpty = useCallback(() => {
-    setState(createEmptyPersonalState());
+    const empty = createEmptyPersonalState();
+    if (authUserRef.current?.displayName) {
+      empty.settings.profile.name = authUserRef.current.displayName;
+    }
+    setState(empty);
     setDrawer(null);
     pushToast('Cleared sample Tasks & Finance data — ready for a fresh start');
   }, [pushToast]);
 
   const resetStarterData = useCallback(() => {
-    setState(createStarterState());
+    const starter = createStarterState();
+    if (authUserRef.current?.displayName) {
+      starter.settings.profile.name = authUserRef.current.displayName;
+    }
+    setState(starter);
     setDrawer(null);
     pushToast('Sample data restored');
   }, [pushToast]);
@@ -1767,6 +1922,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!isCloudConfigValid(next)) {
         return { ok: false, message: 'Fill in all required database connection fields.' };
       }
+      const userId = activeUserIdRef.current || authUserRef.current?.id;
       setCloudStatus((prev) => ({
         ...prev,
         state: 'syncing',
@@ -1776,15 +1932,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const remote = await pullFromCloudDb(next);
         let finalCfg = { ...next };
-        const localTs = getLocalUpdatedAt();
+        const localTs = getLocalUpdatedAt(userId);
         let summary = 'Connected & synced with Cloud DB';
 
-        if (remote?.payload && (!localTs || remote.updatedAt > localTs)) {
-          applyVaultPayload(remote.payload);
+        if (remote?.payload && (!localTs || parseIsoMs(remote.updatedAt) > parseIsoMs(localTs))) {
+          applyVaultPayload(remote.payload, userId);
           summary = 'Connected — pulled latest data from Cloud DB';
         } else {
           const nowIso = new Date().toISOString();
-          setLocalUpdatedAt(nowIso);
+          setLocalUpdatedAt(nowIso, userId);
           const pushed = await pushToCloudDb(next, buildVaultPayload(nowIso));
           if (pushed.createdGistId && next.provider === 'gist' && !next.gistId) {
             finalCfg = { ...next, gistId: pushed.createdGistId };
@@ -1799,7 +1955,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCloudStatus((prev) => ({
           ...prev,
           state: 'synced',
-          provider: finalCfg.provider,
+          provider: userId ? 'supabase' : finalCfg.provider,
           lastSyncedAt: new Date().toISOString(),
           error: undefined,
         }));
@@ -1810,7 +1966,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCloudStatus((prev) => ({
           ...prev,
           state: 'error',
-          provider: next.provider,
+          provider: userId ? 'supabase' : next.provider,
           error: msg,
         }));
         return { ok: false, message: msg };
@@ -1826,15 +1982,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveCloudConfigToStorage(reset);
       }
       setCloudConfig(reset);
-      setCloudStatus((prev) => ({
-        ...prev,
-        state: 'local',
-        provider: 'none',
-        lastSyncedAt: opts?.silent ? null : prev.lastSyncedAt,
-        error: undefined,
-      }));
+      if (!activeUserIdRef.current) {
+        setCloudStatus((prev) => ({
+          ...prev,
+          state: 'local',
+          provider: 'none',
+          lastSyncedAt: opts?.silent ? null : prev.lastSyncedAt,
+          error: undefined,
+        }));
+      }
       if (!opts?.silent) {
-        pushToast('Disconnected Cloud DB — data remains stored locally');
+        pushToast('Disconnected custom Cloud DB config');
       }
     },
     [pushToast]
@@ -1844,31 +2002,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     resetCloudState({ silent: false, persistEmptyConfig: true });
   }, [resetCloudState]);
 
+  const performSignOut = useCallback(
+    async (opts?: { skipFlush?: boolean; silentToast?: boolean }) => {
+      if (pushTimerRef.current) {
+        window.clearTimeout(pushTimerRef.current);
+        pushTimerRef.current = null;
+      }
+      const userId = activeUserIdRef.current || authUserRef.current?.id || null;
+      if (!opts?.skipFlush && userId && vaultHydratedForUserRef.current === userId) {
+        const nowIso = getLocalUpdatedAt(userId) || new Date().toISOString();
+        try {
+          await pushAuthenticatedUserVault(userId, buildVaultPayload(nowIso));
+        } catch {
+          // Do not block sign-out if network is unavailable
+        }
+      }
+
+      vaultHydratedForUserRef.current = null;
+      activeUserIdRef.current = null;
+
+      await signOutCloud();
+
+      const empty = createEmptyPersonalState();
+      skipPersistForStateRef.current = empty;
+      stateRef.current = empty;
+      setState(empty);
+      setLocked(false);
+      setDrawer(null);
+      setModal(null);
+      setLastGmailSyncAt(null);
+      setAuthUser(null);
+      setCloudStatus({
+        state: 'local',
+        provider: 'none',
+        lastSyncedAt: null,
+        localDbReady: false,
+      });
+
+      if (!opts?.silentToast) {
+        pushToast('Signed out of workspace');
+      }
+    },
+    [buildVaultPayload, pushToast]
+  );
+
+  const signOutWorkspace = useCallback(async () => {
+    await performSignOut();
+  }, [performSignOut]);
+
   const clearAllWorkspaceData = useCallback(
     async (opts?: { factoryReset?: boolean }) => {
       if (pushTimerRef.current) {
         window.clearTimeout(pushTimerRef.current);
         pushTimerRef.current = null;
       }
+      const userId = activeUserIdRef.current || authUserRef.current?.id || undefined;
       const isFactory = Boolean(opts?.factoryReset);
-      if (isFactory) {
-        skipNextPersistRef.current = true;
-      } else {
-        skipNextIdbRef.current = true;
-      }
-
-      setState(createEmptyPersonalState());
-      setDrawer(null);
-      if (isFactory) {
-        setModal(null);
-        setLocked(false);
-        setLastGmailSyncAt(null);
-      }
-
-      await clearLocalIdbSnapshot();
 
       if (isFactory) {
+        vaultHydratedForUserRef.current = null;
+        clearAppState(userId);
+        await clearLocalIdbSnapshot(userId);
         resetCloudState({ silent: true, persistEmptyConfig: false });
+
         const keysToRemove = [
           'coby_cloud_db_config_v1',
           'coby_life_os_v1',
@@ -1876,6 +2072,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           'coby_life_updated_at_v1',
           'coby_life_auth_account_v1',
           'coby_life_auth_session_v1',
+          'coby_life_remember_me_v1',
+          'coby_life_sb_auth_v1',
         ];
         for (const key of keysToRemove) {
           try {
@@ -1889,26 +2087,129 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Ignore
           }
         }
-        window.dispatchEvent(new CustomEvent('coby-auth-change'));
+        await performSignOut({ skipFlush: true, silentToast: true });
         pushToast('Factory reset complete — all local data cleared');
-      } else {
-        pushToast('Cleared all workspace data — ready for a fresh start');
+        return;
       }
+
+      const empty = createEmptyPersonalState();
+      if (authUserRef.current?.displayName) {
+        empty.settings.profile.name = authUserRef.current.displayName;
+      }
+      const nowIso = new Date().toISOString();
+      skipPersistForStateRef.current = empty;
+      stateRef.current = empty;
+      saveAppState(empty, userId);
+      setLocalUpdatedAt(nowIso, userId);
+      setState(empty);
+      setDrawer(null);
+
+      await clearLocalIdbSnapshot(userId);
+
+      if (userId) {
+        const emptyPayload: UnifiedVaultPayload = {
+          format: 'coby-life-backup-v1',
+          updatedAt: nowIso,
+          personalOs: empty,
+        };
+        setCloudStatus((prev) => ({
+          ...prev,
+          state: 'syncing',
+          provider: 'supabase',
+          error: undefined,
+        }));
+        try {
+          await pushAuthenticatedUserVault(userId, emptyPayload);
+          vaultHydratedForUserRef.current = userId;
+          setCloudStatus((prev) => ({
+            ...prev,
+            state: 'synced',
+            provider: 'supabase',
+            lastSyncedAt: new Date().toISOString(),
+            error: undefined,
+          }));
+        } catch (err) {
+          setCloudStatus((prev) => ({
+            ...prev,
+            state: 'error',
+            provider: 'supabase',
+            error: err instanceof Error ? err.message : 'Cloud sync failed',
+          }));
+        }
+      }
+
+      pushToast('Cleared all workspace data — ready for a fresh start');
     },
-    [pushToast, resetCloudState]
+    [performSignOut, pushToast, resetCloudState]
   );
 
   const syncCloudNow = useCallback(async () => {
+    const userId = activeUserIdRef.current || authUserRef.current?.id;
     const cfg = cloudConfigRef.current;
+
+    if (userId) {
+      setCloudStatus((prev) => ({
+        ...prev,
+        state: 'syncing',
+        provider: 'supabase',
+        error: undefined,
+      }));
+      try {
+        const remote = await pullAuthenticatedUserVault(userId);
+        const localTs = getLocalUpdatedAt(userId);
+        const remoteMs = parseIsoMs(remote?.updatedAt);
+        const localMs = parseIsoMs(localTs);
+
+        if (remote?.payload && remote.updatedAt && (!localTs || localMs === 0 || remoteMs > localMs)) {
+          applyVaultPayload(remote.payload, userId);
+          pushToast('Pulled newer data from Cloud');
+        } else if (!remote?.payload || localMs > remoteMs) {
+          const nowIso = new Date().toISOString();
+          setLocalUpdatedAt(nowIso, userId);
+          const payload = buildVaultPayload(nowIso);
+          await saveLocalIdbSnapshot(payload, userId);
+          await pushAuthenticatedUserVault(userId, payload);
+          pushToast('Synced latest snapshot to Cloud');
+        } else {
+          pushToast('Cloud workspace is up to date');
+        }
+
+        vaultHydratedForUserRef.current = userId;
+        if (cfg.provider === 'supabase' && isCloudConfigValid(cfg)) {
+          const inboxRes = await pullSupabaseInboxItems(cfg);
+          if (inboxRes.ok && inboxRes.items.length > 0) {
+            ingestRawGmailPayloads(inboxRes.items);
+          }
+        }
+        setCloudStatus({
+          state: 'synced',
+          provider: 'supabase',
+          lastSyncedAt: new Date().toISOString(),
+          localDbReady: true,
+          error: undefined,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Cloud sync failed';
+        setCloudStatus((prev) => ({
+          ...prev,
+          state: 'error',
+          provider: 'supabase',
+          error: msg,
+        }));
+        pushToast(msg);
+      }
+      return;
+    }
+
     if (!isCloudConfigValid(cfg)) {
-      pushToast('Connect Supabase or GitHub Gist in Settings → Cloud DB first');
+      pushToast('Sign in or configure Cloud DB first');
       return;
     }
     setCloudStatus((prev) => ({ ...prev, state: 'syncing', error: undefined }));
     try {
       const remote = await pullFromCloudDb(cfg);
       const localTs = getLocalUpdatedAt();
-      if (remote?.payload && remote.updatedAt && (!localTs || remote.updatedAt > localTs)) {
+      if (remote?.payload && remote.updatedAt && (!localTs || parseIsoMs(remote.updatedAt) > parseIsoMs(localTs))) {
         applyVaultPayload(remote.payload);
         pushToast('Pulled newer data from Cloud DB');
       } else {
@@ -1921,12 +2222,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setCloudConfig(nextCfg);
         }
         pushToast('Synced latest snapshot to Cloud DB');
-      }
-      if (cfg.provider === 'supabase') {
-        const inboxRes = await pullSupabaseInboxItems(cfg);
-        if (inboxRes.ok && inboxRes.items.length > 0) {
-          ingestRawGmailPayloads(inboxRes.items);
-        }
       }
       setCloudStatus((prev) => ({
         ...prev,
@@ -1943,6 +2238,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [applyVaultPayload, buildVaultPayload, ingestRawGmailPayloads, pushToast]);
 
   const pushCloudNow = useCallback(async () => {
+    const userId = activeUserIdRef.current || authUserRef.current?.id;
+    if (userId) {
+      setCloudStatus((prev) => ({
+        ...prev,
+        state: 'syncing',
+        provider: 'supabase',
+        error: undefined,
+      }));
+      try {
+        const nowIso = new Date().toISOString();
+        setLocalUpdatedAt(nowIso, userId);
+        const payload = buildVaultPayload(nowIso);
+        await saveLocalIdbSnapshot(payload, userId);
+        await pushAuthenticatedUserVault(userId, payload);
+        vaultHydratedForUserRef.current = userId;
+        setCloudStatus({
+          state: 'synced',
+          provider: 'supabase',
+          lastSyncedAt: new Date().toISOString(),
+          localDbReady: true,
+          error: undefined,
+        });
+        pushToast('Uploaded local data → Cloud');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Push failed';
+        setCloudStatus((prev) => ({
+          ...prev,
+          state: 'error',
+          provider: 'supabase',
+          error: msg,
+        }));
+        pushToast(msg);
+      }
+      return;
+    }
+
     const cfg = cloudConfigRef.current;
     if (!isCloudConfigValid(cfg)) return;
     setCloudStatus((prev) => ({ ...prev, state: 'syncing', error: undefined }));
@@ -1971,6 +2302,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [buildVaultPayload, pushToast]);
 
   const pullCloudNow = useCallback(async () => {
+    const userId = activeUserIdRef.current || authUserRef.current?.id;
+    if (userId) {
+      setCloudStatus((prev) => ({
+        ...prev,
+        state: 'syncing',
+        provider: 'supabase',
+        error: undefined,
+      }));
+      try {
+        const remote = await pullAuthenticatedUserVault(userId);
+        if (!remote?.payload) {
+          vaultHydratedForUserRef.current = userId;
+          setCloudStatus({
+            state: 'synced',
+            provider: 'supabase',
+            lastSyncedAt: new Date().toISOString(),
+            localDbReady: true,
+            error: undefined,
+          });
+          pushToast('Cloud workspace is empty — push local data first');
+          return;
+        }
+        applyVaultPayload(remote.payload, userId);
+        vaultHydratedForUserRef.current = userId;
+        setCloudStatus({
+          state: 'synced',
+          provider: 'supabase',
+          lastSyncedAt: new Date().toISOString(),
+          localDbReady: true,
+          error: undefined,
+        });
+        pushToast('Restored snapshot from Cloud');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Pull failed';
+        setCloudStatus((prev) => ({
+          ...prev,
+          state: 'error',
+          provider: 'supabase',
+          error: msg,
+        }));
+        pushToast(msg);
+      }
+      return;
+    }
+
     const cfg = cloudConfigRef.current;
     if (!isCloudConfigValid(cfg)) return;
     setCloudStatus((prev) => ({ ...prev, state: 'syncing', error: undefined }));
@@ -2003,6 +2379,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const value = useMemo<AppContextValue>(
     () => ({
+      authUser,
+      authReady,
+      signOutWorkspace,
       state,
       route,
       navDir,
@@ -2082,6 +2461,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       pullCloudNow,
     }),
     [
+      authUser,
+      authReady,
+      signOutWorkspace,
       state,
       route,
       navDir,

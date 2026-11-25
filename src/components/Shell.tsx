@@ -4,7 +4,6 @@ import { APP_MODULES } from '../modules/registry';
 import { useApp } from '../store/AppContext';
 import { ModuleId, PageId } from '../types';
 import { assetUrl } from '../utils/assets';
-import { getAuthAccount, signOut } from '../utils/auth';
 import { localIsoDate } from '../utils/format';
 import {
   clamp01,
@@ -73,6 +72,8 @@ interface SlotPos {
 
 export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const {
+    authUser,
+    signOutWorkspace,
     state,
     route,
     drawer,
@@ -550,7 +551,6 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const activeModuleIdx = MODULE_IDS.indexOf(route.page as ModuleId);
   const activeNavIdx = NAV_IDS.indexOf(route.page);
   const { theme, profile, pinEnabled } = state.settings;
-  const authIdentifier = getAuthAccount()?.identifier;
 
   const renderGlyphIcon = (idx: number) => {
     switch (idx) {
@@ -1122,7 +1122,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                   <div className="acct-card__info">
                     <div className="acct-card__name">{profile.name}</div>
                     <div className="acct-card__sub">
-                      {authIdentifier || profile.tagline}
+                      {authUser?.email || profile.tagline}
                     </div>
                   </div>
                   <button
@@ -1137,7 +1137,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                     <span className="db-badge__dot" />
                     <span>
                       {cloudStatus.state === 'synced'
-                        ? 'Synced'
+                        ? 'Cloud Synced'
                         : cloudStatus.state === 'syncing'
                           ? 'Syncing'
                           : cloudStatus.state === 'error'
@@ -1166,11 +1166,13 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                     <span className="pop-item__text">
                       <span className="pop-item__title">Cloud Database</span>
                       <span className="pop-item__sub">
-                        {cloudStatus.provider === 'supabase'
-                          ? 'Supabase Postgres · auto-sync'
-                          : cloudStatus.provider === 'gist'
-                            ? 'GitHub Private Gist · auto-sync'
-                            : 'Connect Supabase or Gist sync'}
+                        {authUser
+                          ? 'Coby LIFE Cloud · auto-sync'
+                          : cloudStatus.provider === 'supabase'
+                            ? 'Supabase Postgres · auto-sync'
+                            : cloudStatus.provider === 'gist'
+                              ? 'GitHub Private Gist · auto-sync'
+                              : 'Connect Supabase or Gist sync'}
                       </span>
                     </span>
                     <IconChevronRight size={14} className="pop-item__chev" />
@@ -1254,8 +1256,7 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                     className="pop-item pop-item--danger"
                     onClick={() => {
                       setOpenPopover(null);
-                      signOut();
-                      pushToast('Signed out of workspace');
+                      void signOutWorkspace();
                     }}
                   >
                     <span className="pop-item__icon pop-item__icon--danger">
@@ -1264,8 +1265,8 @@ export const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => 
                     <span className="pop-item__text">
                       <span className="pop-item__title">Sign out</span>
                       <span className="pop-item__sub">
-                        {authIdentifier
-                          ? `End session for ${authIdentifier}`
+                        {authUser?.email
+                          ? `End session for ${authUser.email}`
                           : 'Return to sign-in screen'}
                       </span>
                     </span>

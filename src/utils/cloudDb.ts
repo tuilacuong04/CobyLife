@@ -1,4 +1,5 @@
 import { PersistedAppState } from '../types';
+import { supabase } from './supabaseClient';
 import { RawGmailPayloadItem } from './vnGmailParser';
 
 export type CloudProvider = 'none' | 'supabase' | 'gist';
@@ -384,13 +385,20 @@ function openLocalIdb(): Promise<IDBDatabase | null> {
   });
 }
 
-export async function saveLocalIdbSnapshot(payload: UnifiedVaultPayload): Promise<boolean> {
+function getIdbKey(userId?: string): string {
+  return userId ? `vault:${userId}` : IDB_KEY;
+}
+
+export async function saveLocalIdbSnapshot(
+  payload: UnifiedVaultPayload,
+  userId?: string
+): Promise<boolean> {
   const db = await openLocalIdb();
   if (!db) return false;
   return new Promise((resolve) => {
     try {
       const tx = db.transaction(IDB_STORE, 'readwrite');
-      tx.objectStore(IDB_STORE).put(payload, IDB_KEY);
+      tx.objectStore(IDB_STORE).put(payload, getIdbKey(userId));
       tx.oncomplete = () => {
         db.close();
         resolve(true);
@@ -406,13 +414,13 @@ export async function saveLocalIdbSnapshot(payload: UnifiedVaultPayload): Promis
   });
 }
 
-export async function loadLocalIdbSnapshot(): Promise<UnifiedVaultPayload | null> {
+export async function loadLocalIdbSnapshot(userId?: string): Promise<UnifiedVaultPayload | null> {
   const db = await openLocalIdb();
   if (!db) return null;
   return new Promise((resolve) => {
     try {
       const tx = db.transaction(IDB_STORE, 'readonly');
-      const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+      const req = tx.objectStore(IDB_STORE).get(getIdbKey(userId));
       req.onsuccess = () => {
         db.close();
         resolve((req.result as UnifiedVaultPayload) || null);
@@ -428,7 +436,7 @@ export async function loadLocalIdbSnapshot(): Promise<UnifiedVaultPayload | null
   });
 }
 
-export async function clearLocalIdbSnapshot(): Promise<boolean> {
+export async function clearLocalIdbSnapshot(userId?: string): Promise<boolean> {
   const db = await openLocalIdb();
   if (!db) return false;
   return new Promise((resolve) => {
@@ -439,7 +447,7 @@ export async function clearLocalIdbSnapshot(): Promise<boolean> {
         return;
       }
       const tx = db.transaction(IDB_STORE, 'readwrite');
-      tx.objectStore(IDB_STORE).delete(IDB_KEY);
+      tx.objectStore(IDB_STORE).delete(getIdbKey(userId));
       tx.oncomplete = () => {
         db.close();
         resolve(true);
@@ -457,6 +465,48 @@ export async function clearLocalIdbSnapshot(): Promise<boolean> {
       resolve(false);
     }
   });
+}
+
+/* ========================== Authenticated Supabase RLS Vault ========================== */
+
+export async function pullAuthenticatedUserVault(
+  userId: string
+): Promise<{ payload: UnifiedVaultPayload; updatedAt: string } | null> {
+  const { data, error } = await supabase
+    .from('coby_user_vaults')
+    .select('payload, updated_at')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || 'Could not pull cloud vault');
+  }
+  if (!data || !data.payload) return null;
+  const payload = data.payload as UnifiedVaultPayload;
+  return {
+    payload,
+    updatedAt: String(data.updated_at || payload.updatedAt || ''),
+  };
+}
+
+export async function pushAuthenticatedUserVault(
+  userId: string,
+  payload: UnifiedVaultPayload
+): Promise<void> {
+  const { error } = await supabase
+    .from('coby_user_vaults')
+    .upsert(
+      {
+        user_id: userId,
+        payload,
+        updated_at: payload.updatedAt,
+      },
+      { onConflict: 'user_id' }
+    );
+
+  if (error) {
+    throw new Error(error.message || 'Could not push cloud vault');
+  }
 }
 
 /* ========================== Cloud DB Drivers ========================== */
