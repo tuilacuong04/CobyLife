@@ -285,7 +285,7 @@ export const FinancePage: React.FC = () => {
         <input
           className="input"
           style={{ flex: 1, minWidth: 160 }}
-          placeholder="Quick expense note (e.g., Lunch, Coffee, Whey)..."
+          placeholder="Quick expense note (e.g., Lunch, Coffee, Fuel)..."
           value={quickNote}
           onChange={(e) => setQuickNote(e.target.value)}
         />

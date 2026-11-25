@@ -27,22 +27,15 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies (Hub + openGym)
-        run: |
-          npm ci
-          npm --prefix opengym/frontend ci
+      - name: Install dependencies
+        run: npm ci
 
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
 
-      - name: Build openGym + Personal OS for GitHub Pages
+      - name: Build Personal OS for GitHub Pages
         run: |
-          VITE_DEMO=1 npm --prefix opengym/frontend run build -- --outDir ../../public/opengym --emptyOutDir
-          git clone --depth=1 --filter=blob:none --sparse https://github.com/DuarteSantos8/openGym.git /tmp/opengym-media
-          git -C /tmp/opengym-media sparse-checkout set catalogue/media scripts/catalogue/stage-media.mjs
-          node /tmp/opengym-media/scripts/catalogue/stage-media.mjs public/opengym
-          rm -rf /tmp/opengym-media
           BASE_PATH="${{ steps.pages.outputs.base_path }}"
           if [ -z "$BASE_PATH" ]; then
             BASE_PATH="/"

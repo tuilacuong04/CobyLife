@@ -6,7 +6,6 @@ import {
   FutureModuleIdea,
   ModalState,
   ModuleId,
-  OpenGymSnapshot,
   PageId,
   PersistedAppState,
   TaskItem,
@@ -37,12 +36,6 @@ import {
   saveLocalIdbSnapshot,
   UnifiedVaultPayload,
 } from '../utils/cloudDb';
-import {
-  getOpenGymRawJson,
-  OPENGYM_STATE_KEY,
-  readOpenGymSnapshot,
-  restoreOpenGymRawJson,
-} from '../utils/opengymBridge';
 import { addDaysIso, localIsoDate } from '../utils/format';
 import { dur, gsap, isMobileViewport, spawnFloatUp } from '../utils/motion';
 
@@ -54,7 +47,6 @@ export interface RouteState {
 
 const DEFAULT_SUB: Record<PageId, string> = {
   overview: '',
-  gym: 'home',
   tasks: 'agenda',
   finance: 'overview',
   modules: '',
@@ -63,7 +55,6 @@ const DEFAULT_SUB: Record<PageId, string> = {
 
 const VALID_PAGES = new Set<PageId>([
   'overview',
-  'gym',
   'tasks',
   'finance',
   'modules',
@@ -72,11 +63,10 @@ const VALID_PAGES = new Set<PageId>([
 
 const PAGE_ORDER: Record<PageId, number> = {
   overview: 0,
-  gym: 1,
-  tasks: 2,
-  finance: 3,
-  modules: 4,
-  settings: 5,
+  tasks: 1,
+  finance: 2,
+  modules: 3,
+  settings: 4,
 };
 
 const APP_BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
@@ -119,19 +109,13 @@ function uid(prefix: string): string {
 
 interface AppContextValue {
   state: PersistedAppState;
-  gym: OpenGymSnapshot;
   route: RouteState;
   navDir: number;
   locked: boolean;
   drawer: DrawerState;
   modal: ModalState;
   toasts: ToastItem[];
-  gymMounted: boolean;
-  gymHashTarget: string;
-  registerGymFrame: (frame: HTMLIFrameElement | null) => void;
   navigate: (page: PageId, sub?: string, query?: Record<string, string>) => void;
-  openGymView: (hashPath: string) => void;
-  refreshGymSnapshot: () => void;
   openDrawer: (d: DrawerState) => void;
   closeDrawer: () => void;
   openModal: (m: ModalState) => void;
@@ -193,15 +177,12 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<PersistedAppState>(() => loadAppState());
-  const [gym, setGym] = useState<OpenGymSnapshot>(() => readOpenGymSnapshot());
   const [route, setRoute] = useState<RouteState>(() => parseLocation());
   const [navDir, setNavDir] = useState(1);
   const [locked, setLocked] = useState<boolean>(() => loadAppState().settings.pinEnabled);
   const [drawer, setDrawer] = useState<DrawerState>(null);
   const [modal, setModal] = useState<ModalState>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const [gymMounted, setGymMounted] = useState<boolean>(() => parseLocation().page === 'gym');
-  const [gymHashTarget, setGymHashTarget] = useState<string>('#/home');
   const [cloudConfig, setCloudConfig] = useState<CloudDbConfig>(() => loadCloudConfig());
   const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>(() => {
     const cfg = loadCloudConfig();
@@ -219,7 +200,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   routeRef.current = route;
   const cloudConfigRef = useRef(cloudConfig);
   cloudConfigRef.current = cloudConfig;
-  const gymFrameRef = useRef<HTMLIFrameElement | null>(null);
   const exitTweenRef = useRef<gsap.core.Tween | null>(null);
   const hydratedRef = useRef(false);
   const skipNextPushRef = useRef(false);
@@ -231,7 +211,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       format: 'coby-life-backup-v1',
       updatedAt: updatedAt || new Date().toISOString(),
       personalOs: stateRef.current,
-      openGym: getOpenGymRawJson(),
     };
   }, []);
 
@@ -241,18 +220,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const normalized = normalizePersistedState(payload.personalOs);
       saveAppState(normalized);
       setState(normalized);
-    }
-    if (payload.openGym) {
-      restoreOpenGymRawJson(payload.openGym);
-      setGym(readOpenGymSnapshot());
-      try {
-        gymFrameRef.current?.contentWindow?.postMessage(
-          { type: 'hub:reload-state' },
-          window.location.origin
-        );
-      } catch {
-        // Ignore
-      }
     }
     if (payload.updatedAt) {
       setLocalUpdatedAt(payload.updatedAt);
@@ -296,24 +263,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }, 1400);
   }, [buildVaultPayload]);
-
-  const registerGymFrame = useCallback((frame: HTMLIFrameElement | null) => {
-    gymFrameRef.current = frame;
-    if (frame?.contentWindow) {
-      try {
-        frame.contentWindow.postMessage(
-          { type: 'hub:set-theme', theme: stateRef.current.settings.theme },
-          window.location.origin
-        );
-      } catch {
-        // Frame may still be loading
-      }
-    }
-  }, []);
-
-  const refreshGymSnapshot = useCallback(() => {
-    setGym(readOpenGymSnapshot());
-  }, []);
 
   // Persist locally to localStorage + IndexedDB, then debounce Cloud DB sync
   useEffect(() => {
@@ -396,37 +345,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [applyVaultPayload, buildVaultPayload]);
 
   useEffect(() => {
-    const theme = state.settings.theme;
-    document.documentElement.setAttribute('data-theme', theme);
-    try {
-      gymFrameRef.current?.contentWindow?.postMessage(
-        { type: 'hub:set-theme', theme },
-        window.location.origin
-      );
-    } catch {
-      // Ignore if iframe not yet ready
-    }
+    document.documentElement.setAttribute('data-theme', state.settings.theme);
   }, [state.settings.theme]);
 
-  // Listen to openGym live updates (postMessage + storage + focus) and mirror to DB
+  // Auto-pull newer Cloud DB changes on window focus
   useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data && event.data.type === 'opengym:state-updated') {
-        setGym(readOpenGymSnapshot());
-        const nowIso = new Date().toISOString();
-        setLocalUpdatedAt(nowIso);
-        void saveLocalIdbSnapshot(buildVaultPayload(nowIso));
-        scheduleCloudPush();
-      }
-    };
-    const onStorage = (event: StorageEvent) => {
-      if (!event.key || event.key === OPENGYM_STATE_KEY) {
-        setGym(readOpenGymSnapshot());
-      }
-    };
     const onFocus = () => {
-      setGym(readOpenGymSnapshot());
       const cfg = cloudConfigRef.current;
       const now = Date.now();
       if (cfg.autoSync && isCloudConfigValid(cfg) && now - lastFocusPullRef.current > 15000) {
@@ -450,21 +374,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
 
-    window.addEventListener('message', onMessage);
-    window.addEventListener('storage', onStorage);
     window.addEventListener('focus', onFocus);
-    return () => {
-      window.removeEventListener('message', onMessage);
-      window.removeEventListener('storage', onStorage);
-      window.removeEventListener('focus', onFocus);
-    };
-  }, [applyVaultPayload, buildVaultPayload, scheduleCloudPush]);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [applyVaultPayload]);
 
   useEffect(() => {
     const onPop = () => {
-      const next = parseLocation();
-      if (next.page === 'gym') setGymMounted(true);
-      setRoute(next);
+      setRoute(parseLocation());
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -488,10 +404,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const url = buildUrl(page, sub, query);
     const dir = PAGE_ORDER[page] >= PAGE_ORDER[prev.page] ? 1 : -1;
 
-    if (page === 'gym') {
-      setGymMounted(true);
-    }
-
     const swapEl = document.querySelector<HTMLElement>('.scroll [data-page-swap="true"]');
     const hadExitTween = exitTweenRef.current !== null;
     if (exitTweenRef.current) {
@@ -508,12 +420,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       setNavDir(dir);
       setRoute(parseLocation());
-      if (page === 'overview') {
-        setGym(readOpenGymSnapshot());
-      }
     };
 
-    if (prev.page !== page && prev.page !== 'gym' && page !== 'gym' && swapEl && dur(0.16) > 0) {
+    if (prev.page !== page && swapEl && dur(0.16) > 0) {
       const mobile = isMobileViewport();
       exitTweenRef.current = gsap.to(swapEl, {
         opacity: 0,
@@ -530,24 +439,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       doCommit();
     }
   }, []);
-
-  const openGymView = useCallback(
-    (hashPath: string) => {
-      const normalized = hashPath.startsWith('#') ? hashPath : `#${hashPath.startsWith('/') ? hashPath : `/${hashPath}`}`;
-      setGymHashTarget(normalized);
-      setGymMounted(true);
-      navigate('gym', normalized.replace(/^#\/?/, '') || 'home');
-      try {
-        gymFrameRef.current?.contentWindow?.postMessage(
-          { type: 'hub:navigate', path: normalized },
-          window.location.origin
-        );
-      } catch {
-        // Initial mount will pick up gymHashTarget via src
-      }
-    },
-    [navigate]
-  );
 
   const openDrawer = useCallback((d: DrawerState) => setDrawer(d), []);
   const closeDrawer = useCallback(() => setDrawer(null), []);
@@ -939,13 +830,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [pushToast]
   );
 
-  // Unified Backup & Restore (Personal OS + openGym!)
+  // Backup & Restore (Tasks + Finance + Settings)
   const exportUnifiedBackup = useCallback(() => {
     const payload = {
       format: 'coby-life-backup-v1',
       exportedAt: new Date().toISOString(),
       personalOs: stateRef.current,
-      openGym: getOpenGymRawJson(),
     };
     return JSON.stringify(payload, null, 2);
   }, []);
@@ -961,20 +851,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setState(normalizePersistedState(parsed.personalOs));
         } else if (Array.isArray(parsed.tasks) && parsed.finance) {
           setState(normalizePersistedState(parsed));
+        } else {
+          return { ok: false, error: 'Unrecognized backup format.' };
         }
-        if (parsed.openGym) {
-          restoreOpenGymRawJson(parsed.openGym);
-          setGym(readOpenGymSnapshot());
-          try {
-            gymFrameRef.current?.contentWindow?.postMessage(
-              { type: 'hub:reload-state' },
-              window.location.origin
-            );
-          } catch {
-            // Ignore
-          }
-        }
-        pushToast('Full backup restored');
+        pushToast('Backup restored');
         return { ok: true };
       } catch (err) {
         return {
@@ -1168,19 +1048,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const value = useMemo<AppContextValue>(
     () => ({
       state,
-      gym,
       route,
       navDir,
       locked,
       drawer,
       modal,
       toasts,
-      gymMounted,
-      gymHashTarget,
-      registerGymFrame,
       navigate,
-      openGymView,
-      refreshGymSnapshot,
       openDrawer,
       closeDrawer,
       openModal,
@@ -1227,19 +1101,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }),
     [
       state,
-      gym,
       route,
       navDir,
       locked,
       drawer,
       modal,
       toasts,
-      gymMounted,
-      gymHashTarget,
-      registerGymFrame,
       navigate,
-      openGymView,
-      refreshGymSnapshot,
       openDrawer,
       closeDrawer,
       openModal,

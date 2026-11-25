@@ -25,7 +25,6 @@ export interface UnifiedVaultPayload {
   format: 'coby-life-backup-v1';
   updatedAt: string;
   personalOs: PersistedAppState;
-  openGym: unknown;
 }
 
 export const CLOUD_CONFIG_KEY = 'coby_cloud_db_config_v1';
@@ -334,7 +333,7 @@ export async function pushToCloudDb(
         Authorization: `Bearer ${cfg.gistToken.trim()}`,
       },
       body: JSON.stringify({
-        description: 'Coby LIFE — Personal OS Database (openGym + Tasks + Finance)',
+        description: 'Coby LIFE — Personal OS Database (Tasks + Finance)',
         public: false,
         files: {
           'coby-life-db.json': { content },

@@ -7,12 +7,12 @@ import {
   formatMoney,
   formatMoneyCompact,
   formatShortDate,
-  formatVolume,
   greetingEn,
   localIsoDate,
   relativeDueLabel,
   TASK_CATEGORY_META,
   TASK_PRIORITY_META,
+  WALLET_KIND_LABEL,
 } from '../../utils/format';
 import { useScrollReveal, useStaggerEntrance } from '../../utils/motion';
 import { MagneticButton } from '../Motion';
@@ -21,8 +21,6 @@ import {
   IconArrowUpRight,
   IconCheck,
   IconChevronRight,
-  IconDumbbell,
-  IconFlame,
   IconModuleGlyph,
   IconPlus,
   IconWallet,
@@ -31,10 +29,8 @@ import {
 export const OverviewPage: React.FC = () => {
   const {
     state,
-    gym,
     walletBalances,
     navigate,
-    openGymView,
     openModal,
     openDrawer,
     toggleTaskDone,
@@ -66,13 +62,18 @@ export const OverviewPage: React.FC = () => {
   const openTasksToday = tasksToday.filter((t) => t.status !== 'done');
   const overdueCount = openTasksToday.filter((t) => t.dueDate && t.dueDate < today).length;
   const doneTasksToday = tasksToday.filter((t) => t.status === 'done').length;
+  const tasksTodayPct =
+    tasksToday.length > 0 ? Math.round((doneTasksToday / tasksToday.length) * 100) : 100;
+  const openTasksTotal = state.tasks.filter((t) => t.status !== 'done').length;
 
   const financeMetrics = useMemo(() => {
     let monthExpense = 0;
     let monthIncome = 0;
+    let monthTxCount = 0;
     const spentByCat: Record<string, number> = {};
     for (const tx of state.finance.transactions) {
       if (!tx.date.startsWith(thisMonth)) continue;
+      monthTxCount++;
       if (tx.type === 'expense') {
         monthExpense += tx.amount;
         spentByCat[tx.categoryId] = (spentByCat[tx.categoryId] || 0) + tx.amount;
@@ -80,6 +81,9 @@ export const OverviewPage: React.FC = () => {
         monthIncome += tx.amount;
       }
     }
+    const netMonth = monthIncome - monthExpense;
+    const savingsRate =
+      monthIncome > 0 ? Math.max(-99, Math.round((netMonth / monthIncome) * 100)) : 0;
     const totalBalance = Object.values(walletBalances).reduce((sum, v) => sum + v, 0);
     const totalBudget = state.finance.budgets.reduce((sum, b) => sum + b.monthlyLimit, 0);
     const budgetPct = totalBudget > 0 ? Math.round((monthExpense / totalBudget) * 100) : 0;
@@ -105,6 +109,9 @@ export const OverviewPage: React.FC = () => {
     return {
       monthExpense,
       monthIncome,
+      monthTxCount,
+      netMonth,
+      savingsRate,
       totalBalance,
       totalBudget,
       budgetPct,
@@ -114,11 +121,6 @@ export const OverviewPage: React.FC = () => {
     };
   }, [state.finance, walletBalances, thisMonth]);
 
-  const gymWeekPct = Math.min(
-    100,
-    Math.round((gym.workoutsThisWeek / Math.max(gym.weekTarget, 1)) * 100)
-  );
-
   return (
     <>
       <div className="phead">
@@ -127,12 +129,8 @@ export const OverviewPage: React.FC = () => {
             {greetingEn()}, {profile.name}
           </h1>
           <p className="phead__sub">
-            {formatFullDate()} · {openTasksToday.length} tasks left today ·{' '}
-            {gym.activeWorkout
-              ? `Active: ${gym.activeWorkout.name}`
-              : gym.todayRoutine
-                ? `Gym: ${gym.todayRoutine.name}`
-                : 'Ready to train'}
+            {formatFullDate()} · {openTasksToday.length} tasks due today · Balance{' '}
+            {formatMoneyCompact(financeMetrics.totalBalance, currency)}
           </p>
         </div>
         <div className="phead__actions">
@@ -147,48 +145,16 @@ export const OverviewPage: React.FC = () => {
           <MagneticButton
             type="button"
             className="btn btn--primary"
-            onClick={() => openGymView('#/home')}
+            onClick={() => openModal({ kind: 'new-task' })}
           >
-            <IconDumbbell size={15} />
-            {gym.activeWorkout ? 'Resume workout' : 'Open Gym'}
+            <IconPlus size={15} />
+            New task
           </MagneticButton>
         </div>
       </div>
 
       {/* 4 Unified Live KPI Cards */}
       <div ref={kpiRef} className="kpi-grid">
-        <div
-          className="card kpi-card tone-tile--lime"
-          role="button"
-          tabIndex={0}
-          style={{ cursor: 'pointer' }}
-          onClick={() => openGymView('#/home')}
-        >
-          <div className="kpi-card__label">Gym this week</div>
-          <div className="kpi-card__value">
-            {gym.available ? `${gym.workoutsThisWeek}/${gym.weekTarget} sessions` : 'Ready'}
-          </div>
-          <div className="meter">
-            <div
-              className="meter__fill"
-              style={{ transform: `scaleX(${Math.max(0.06, gymWeekPct / 100)})` }}
-            />
-          </div>
-          <div className="kpi-card__meta">
-            {gym.available ? (
-              <>
-                <span className="kpi-card__delta">
-                  <IconFlame size={13} style={{ verticalAlign: '-2px', marginRight: 3 }} />
-                  {gym.streakWeeks}w streak
-                </span>
-                <span>· {formatVolume(gym.totalVolumeThisWeek, gym.unit)}</span>
-              </>
-            ) : (
-              <span>Tap to launch openGym</span>
-            )}
-          </div>
-        </div>
-
         <div
           className="card kpi-card tone-tile--sky"
           role="button"
@@ -200,13 +166,19 @@ export const OverviewPage: React.FC = () => {
           <div className="kpi-card__value">
             {doneTasksToday}/{tasksToday.length}
           </div>
+          <div className="meter">
+            <div
+              className="meter__fill"
+              style={{ transform: `scaleX(${Math.max(0.06, tasksTodayPct / 100)})` }}
+            />
+          </div>
           <div className="kpi-card__meta">
             {overdueCount > 0 ? (
               <span className="kpi-card__delta is-neg">{overdueCount} overdue</span>
             ) : (
               <span className="kpi-card__delta">On track</span>
             )}
-            <span>· {state.tasks.filter((t) => t.status !== 'done').length} open</span>
+            <span>· {openTasksTotal} open total</span>
           </div>
         </div>
 
@@ -225,7 +197,7 @@ export const OverviewPage: React.FC = () => {
             <div
               className="meter__fill"
               style={{
-                transform: `scaleX(${Math.min(1, financeMetrics.budgetPct / 100)})`,
+                transform: `scaleX(${Math.min(1, Math.max(0.04, financeMetrics.budgetPct / 100))})`,
                 background: financeMetrics.budgetPct > 100 ? 'var(--bad)' : 'var(--text)',
               }}
             />
@@ -240,7 +212,7 @@ export const OverviewPage: React.FC = () => {
         </div>
 
         <div
-          className="card kpi-card"
+          className="card kpi-card tone-tile--lime"
           role="button"
           tabIndex={0}
           style={{ cursor: 'pointer' }}
@@ -257,80 +229,35 @@ export const OverviewPage: React.FC = () => {
             <span>· {state.finance.wallets.length} wallets</span>
           </div>
         </div>
+
+        <div
+          className="card kpi-card"
+          role="button"
+          tabIndex={0}
+          style={{ cursor: 'pointer' }}
+          onClick={() => navigate('finance', 'transactions')}
+        >
+          <div className="kpi-card__label">Monthly net</div>
+          <div className="kpi-card__value">
+            {financeMetrics.netMonth >= 0 ? '+' : ''}
+            {formatMoneyCompact(financeMetrics.netMonth, currency)}
+          </div>
+          <div className="kpi-card__meta">
+            <span className={`kpi-card__delta ${financeMetrics.netMonth < 0 ? 'is-neg' : ''}`}>
+              {financeMetrics.monthIncome > 0
+                ? `${financeMetrics.savingsRate}% saved`
+                : financeMetrics.netMonth >= 0
+                  ? 'Balanced'
+                  : 'Net outflow'}
+            </span>
+            <span>· {financeMetrics.monthTxCount} tx this month</span>
+          </div>
+        </div>
       </div>
 
       {/* Main Personal OS Bento Grid */}
       <div ref={bentoRef} className="bento">
-        {/* Left: openGym Live Command Card */}
-        <div className="card bento-card col-6">
-          <div className="card__head">
-            <div>
-              <h2 className="card__title">Gym · openGym Tracker</h2>
-              <p className="card__sub">
-                Full 5,600+ exercise library, workout logger, muscle recovery & 1RM stats
-              </p>
-            </div>
-            <button
-              type="button"
-              className="card__link"
-              onClick={() => openGymView('#/home')}
-            >
-              Open <IconChevronRight size={14} />
-            </button>
-          </div>
-
-          <div className="gym-summary-grid">
-            <div className="gym-stat-box">
-              <div className="gym-stat-box__label">Next routine</div>
-              <div className="gym-stat-box__val">
-                {gym.todayRoutine ? gym.todayRoutine.name : 'Push / Pull / Legs'}
-              </div>
-              <div className="gym-stat-box__sub">
-                {gym.todayRoutine
-                  ? `${gym.todayRoutine.exerciseCount} exercises scheduled`
-                  : 'Open openGym to configure your split'}
-              </div>
-            </div>
-
-            <div className="gym-stat-box">
-              <div className="gym-stat-box__label">Latest bodyweight</div>
-              <div className="gym-stat-box__val">
-                {gym.latestBodyweight
-                  ? `${gym.latestBodyweight.weight} ${gym.unit}`
-                  : 'Not logged'}
-              </div>
-              <div className="gym-stat-box__sub">
-                {gym.latestBodyweight?.target
-                  ? `Goal: ${gym.latestBodyweight.target} ${gym.unit}`
-                  : gym.lastWorkout
-                    ? `Last: ${gym.lastWorkout.name} (${formatShortDate(gym.lastWorkout.date)})`
-                    : 'Synced live with openGym'}
-              </div>
-            </div>
-          </div>
-
-          <div className="gym-shortcuts">
-            {[
-              { label: 'Start Workout', path: '#/home' },
-              { label: 'Plan', path: '#/plan' },
-              { label: 'Muscle Map', path: '#/muscles' },
-              { label: 'Stats & 1RM', path: '#/stats' },
-              { label: '5.6K Exercises', path: '#/library' },
-              { label: 'Body Metrics', path: '#/measurements' },
-            ].map((item) => (
-              <button
-                key={item.path}
-                type="button"
-                className="chip"
-                onClick={() => openGymView(item.path)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Right: Today's Tasks */}
+        {/* Top Left: Today's Tasks */}
         <div className="card bento-card col-6">
           <div className="card__head">
             <div>
@@ -407,11 +334,11 @@ export const OverviewPage: React.FC = () => {
           )}
         </div>
 
-        {/* Bottom Left: Recent Expenses & Budgets */}
-        <div className="card bento-card col-7">
+        {/* Top Right: Cashflow & Budgets */}
+        <div className="card bento-card col-6">
           <div className="card__head">
             <div>
-              <h2 className="card__title">Cashflow & Budgets</h2>
+              <h2 className="card__title">Cashflow &amp; Budgets</h2>
               <p className="card__sub">
                 In {formatMoney(financeMetrics.monthIncome, currency)} · Out{' '}
                 {formatMoney(financeMetrics.monthExpense, currency)}
@@ -547,12 +474,79 @@ export const OverviewPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Bottom Left: Wallets & Accounts */}
+        <div className="card bento-card col-7">
+          <div className="card__head">
+            <div>
+              <h2 className="card__title">Wallets &amp; Balances</h2>
+              <p className="card__sub">
+                {state.finance.wallets.length} active accounts · Total{' '}
+                {formatMoney(financeMetrics.totalBalance, currency)}
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                type="button"
+                className="chip"
+                style={{ height: 28 }}
+                onClick={() => openModal({ kind: 'new-wallet' })}
+              >
+                <IconPlus size={13} /> Wallet
+              </button>
+              <button
+                type="button"
+                className="card__link"
+                onClick={() => navigate('finance', 'wallets')}
+              >
+                Manage <IconChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+
+          <div className="overview-wallet-grid">
+            {state.finance.wallets.map((wallet) => {
+              const bal = walletBalances[wallet.id] ?? wallet.initialBalance;
+              return (
+                <button
+                  key={wallet.id}
+                  type="button"
+                  className="module-quick-row"
+                  onClick={() => navigate('finance', 'wallets')}
+                >
+                  <span className={`pop-item__tile tile--${wallet.tone}`}>
+                    <IconWallet size={16} />
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
+                      {wallet.name}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: 'var(--muted)',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {wallet.note || WALLET_KIND_LABEL[wallet.kind]}
+                    </div>
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text)' }}>
+                    {formatMoneyCompact(bal, currency)}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Bottom Right: Extensible Module Hub */}
         <div className="card bento-card col-5">
           <div className="card__head">
             <div>
               <h2 className="card__title">Personal Modules</h2>
-              <p className="card__sub">Pluggable architecture ready for module #4, #5...</p>
+              <p className="card__sub">Pluggable architecture ready for module #3, #4...</p>
             </div>
             <button
               type="button"
@@ -597,7 +591,7 @@ export const OverviewPage: React.FC = () => {
               </span>
               <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
-                  Module #4+ (Extensible)
+                  Module #3+ (Extensible)
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>
                   {state.futureModules.length} ideas in personal roadmap

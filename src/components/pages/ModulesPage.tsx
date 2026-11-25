@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { APP_MODULES } from '../../modules/registry';
 import { useApp } from '../../store/AppContext';
+import { ModuleId } from '../../types';
 import { useStaggerEntrance } from '../../utils/motion';
 import { MagneticButton } from '../Motion';
 import {
@@ -13,7 +14,6 @@ import {
 export const ModulesPage: React.FC = () => {
   const {
     state,
-    gym,
     navigate,
     openModal,
     toggleModuleEnabled,
@@ -23,12 +23,7 @@ export const ModulesPage: React.FC = () => {
   const gridRef = useRef<HTMLDivElement>(null);
   useStaggerEntrance(gridRef, '.mod-card', []);
 
-  const getModuleStat = (id: 'gym' | 'tasks' | 'finance') => {
-    if (id === 'gym') {
-      return gym.available
-        ? `${gym.workoutsCount} workouts · ${gym.routines.length} routines`
-        : '5,632 exercises ready';
-    }
+  const getModuleStat = (id: ModuleId) => {
     if (id === 'tasks') {
       const open = state.tasks.filter((t) => t.status !== 'done').length;
       return `${open} open · ${state.tasks.length} total`;
@@ -40,9 +35,9 @@ export const ModulesPage: React.FC = () => {
     <>
       <div className="phead">
         <div>
-          <h1 className="phead__title">Modules & Extensions</h1>
+          <h1 className="phead__title">Modules &amp; Extensions</h1>
           <p className="phead__sub">
-            Modular Personal OS — built so you can plug in #4, #5, and beyond cleanly
+            Modular Personal OS — built so you can plug in #3, #4, and beyond cleanly
           </p>
         </div>
         <div className="phead__actions">
@@ -59,8 +54,8 @@ export const ModulesPage: React.FC = () => {
 
       <div ref={gridRef} className="stack-list" style={{ gap: 20 }}>
         <div>
-          <div className="section-eyebrow">Active modules (3)</div>
-          <div className="module-grid">
+          <div className="section-eyebrow">Active modules ({APP_MODULES.length})</div>
+          <div className="module-grid module-grid--two">
             {APP_MODULES.map((mod) => {
               const enabled = state.settings.enabledModules[mod.id];
               return (
@@ -126,7 +121,7 @@ export const ModulesPage: React.FC = () => {
           <div className="card__head">
             <div>
               <h2 className="card__title">
-                Extension Roadmap — Module #4+ ({state.futureModules.length})
+                Extension Roadmap — Module #3+ ({state.futureModules.length})
               </h2>
               <p className="card__sub">
                 Capture personal tools you want to add next. Register new modules in{' '}

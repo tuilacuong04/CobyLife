@@ -21,7 +21,6 @@ import { animateErrorShake } from '../utils/motion';
 import { AnimatedModal } from './Motion';
 import {
   IconClose,
-  IconDumbbell,
   IconPlus,
   IconSearch,
   IconTasks,
@@ -29,7 +28,7 @@ import {
 } from './Icons';
 
 const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const { state, gym, navigate, openGymView, openDrawer, openModal } = useApp();
+  const { state, navigate, openDrawer, openModal } = useApp();
   const [q, setQ] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -60,12 +59,6 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     return list.slice(0, 5);
   }, [state.finance.transactions, state.finance.categories, term]);
 
-  const matchingRoutines = useMemo(() => {
-    return gym.routines
-      .filter((r) => !term || r.name.toLowerCase().includes(term))
-      .slice(0, 4);
-  }, [gym.routines, term]);
-
   return (
     <AnimatedModal open onClose={onClose} size="lg" label="Quick search">
       <div className="cmd-head">
@@ -73,7 +66,7 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         <input
           ref={inputRef}
           className="cmd-input"
-          placeholder="Search tasks, expenses, openGym routines, or actions..."
+          placeholder="Search tasks, transactions, or quick actions..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -108,40 +101,6 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               </span>
               <span className="cmd-row__meta">Finance</span>
             </button>
-            <button
-              type="button"
-              className="cmd-row"
-              onClick={() => {
-                onClose();
-                openGymView('#/home');
-              }}
-            >
-              <span className="cmd-row__title">
-                <IconDumbbell size={14} style={{ marginRight: 6 }} />
-                Open openGym — Start workout
-              </span>
-              <span className="cmd-row__meta">Gym</span>
-            </button>
-          </div>
-        )}
-
-        {matchingRoutines.length > 0 && (
-          <div className="cmd-group">
-            <div className="cmd-group__label">Gym · openGym Routines</div>
-            {matchingRoutines.map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                className="cmd-row"
-                onClick={() => {
-                  onClose();
-                  openGymView('#/plan');
-                }}
-              >
-                <span className="cmd-row__title">{r.name}</span>
-                <span className="cmd-row__meta">{r.exerciseCount} exercises</span>
-              </button>
-            ))}
           </div>
         )}
 
@@ -193,7 +152,7 @@ const SearchModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           </div>
         )}
 
-        {term && matchingTasks.length === 0 && matchingTx.length === 0 && matchingRoutines.length === 0 && (
+        {term && matchingTasks.length === 0 && matchingTx.length === 0 && (
           <div className="empty-state" style={{ padding: '28px 12px' }}>
             No matches for &ldquo;{q}&rdquo;.
           </div>
@@ -256,7 +215,7 @@ const NewTaskModal: React.FC<{
           <input
             className="input"
             autoFocus
-            placeholder="e.g., Leg Day 60m, Pay internet bill..."
+            placeholder="e.g., Pay internet bill, Read 20 pages..."
             value={title}
             onChange={(e) => {
               setTitle(e.target.value);
@@ -566,7 +525,7 @@ const NewTransactionModal: React.FC<{
             <span className="field__label">Note</span>
             <input
               className="input"
-              placeholder="e.g., Lunch, Whey, Fuel..."
+              placeholder="e.g., Lunch, Coffee, Fuel..."
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />

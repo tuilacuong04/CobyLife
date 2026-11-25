@@ -5,9 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:opengym": "npm --prefix opengym/frontend run build -- --outDir ../../public/opengym --emptyOutDir",
     "build": "tsc && vite build",
-    "build:all": "VITE_DEMO=1 npm run build:opengym && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {

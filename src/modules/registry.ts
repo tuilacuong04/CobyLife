@@ -14,24 +14,12 @@ export interface ModuleDefinition {
 
 /**
  * Pluggable Module Registry.
- * To add Module #4, #5, ... in the future:
+ * To add Module #3, #4, ... in the future:
  * 1. Add the module id to ModuleId/PageId in src/types.ts
  * 2. Register a ModuleDefinition entry here
  * 3. Mount its page component in src/App.tsx
  */
 export const APP_MODULES: ModuleDefinition[] = [
-  {
-    id: 'gym',
-    pageId: 'gym',
-    name: 'Gym & Training',
-    shortName: 'Gym',
-    tagline: 'openGym · 5,600+ exercises',
-    description:
-      'Full openGym integration: routines, workout logging, rest timers, progression engine, muscle recovery map, measurements, 1RM analytics, and Strong/Hevy import.',
-    tone: 'lime',
-    defaultSub: 'home',
-    poweredBy: 'openGym (AGPL-3.0)',
-  },
   {
     id: 'tasks',
     pageId: 'tasks',
