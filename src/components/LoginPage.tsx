@@ -2,39 +2,38 @@ import React, { useRef, useState } from 'react';
 import { useApp } from '../store/AppContext';
 import { assetUrl } from '../utils/assets';
 import {
-  getAuthAccount,
-  hasRegisteredAccount,
-  markSessionAuthenticated,
-  signIn,
-  signUp,
+  resendSignupConfirmation,
+  signInWithEmail,
+  signUpWithEmail,
+  verifySignupOtp,
 } from '../utils/auth';
-import { decodeCloudConfigCode, isCloudConfigValid } from '../utils/cloudDb';
+import { getRememberMePreference } from '../utils/supabaseClient';
 import { animateErrorShake } from '../utils/motion';
 import { MagneticButton, SlidingSegmented } from './Motion';
 import {
   IconCheck,
-  IconCloud,
   IconLock,
+  IconMail,
   IconMoon,
+  IconRefresh,
   IconSun,
   IconSylvaMark,
 } from './Icons';
 
-type LoginMode = 'signin' | 'signup' | 'pair';
+type LoginMode = 'signin' | 'signup';
 
 export const LoginPage: React.FC = () => {
-  const { state, toggleTheme, updateProfile, saveCloudConfig, pullCloudNow, pushToast } = useApp();
-  const existingAccount = getAuthAccount();
+  const { state, toggleTheme, pushToast } = useApp();
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const [mode, setMode] = useState<LoginMode>(() =>
-    hasRegisteredAccount() ? 'signin' : 'signup'
-  );
-  const [displayName, setDisplayName] = useState(() => state.settings.profile.name || '');
-  const [identifier, setIdentifier] = useState(() => existingAccount?.identifier || '');
+  const [mode, setMode] = useState<LoginMode>('signin');
+  const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
-  const [pairingCode, setPairingCode] = useState('');
+  const [rememberMe, setRememberMe] = useState(() => getRememberMePreference());
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [otpToken, setOtpToken] = useState('');
+  const [infoMsg, setInfoMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -43,6 +42,7 @@ export const LoginPage: React.FC = () => {
   const handleModeChange = (next: LoginMode) => {
     setMode(next);
     setError('');
+    setInfoMsg('');
   };
 
   const triggerShake = (msg: string) => {
@@ -55,13 +55,14 @@ export const LoginPage: React.FC = () => {
     if (busy) return;
     setBusy(true);
     setError('');
+    setInfoMsg('');
     try {
-      const res = await signIn(identifier, password, rememberMe);
+      const res = await signInWithEmail(email, password, rememberMe);
       if (!res.ok) {
-        triggerShake(res.error || 'Incorrect email/username or password.');
+        triggerShake(res.error || 'Incorrect email or password.');
         return;
       }
-      pushToast(`Signed in as ${res.account?.displayName || identifier.trim()}`);
+      pushToast(`Signed in as ${res.user?.displayName || res.user?.email || email.trim()}`);
     } finally {
       setBusy(false);
     }
@@ -71,26 +72,27 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     if (busy) return;
     const cleanName = displayName.trim();
-    const cleanId = identifier.trim();
+    const cleanEmail = email.trim();
     if (!cleanName) {
       triggerShake('Enter your display name.');
       return;
     }
-    if (!cleanId) {
-      triggerShake('Enter an email or username.');
+    if (!cleanEmail) {
+      triggerShake('Enter your email address.');
       return;
     }
-    if (password.length < 4) {
-      triggerShake('Password must be at least 4 characters.');
+    if (password.length < 6) {
+      triggerShake('Password must be at least 6 characters.');
       return;
     }
 
     setBusy(true);
     setError('');
+    setInfoMsg('');
     try {
-      const res = await signUp({
+      const res = await signUpWithEmail({
         displayName: cleanName,
-        identifier: cleanId,
+        email: cleanEmail,
         password,
         rememberMe,
       });
@@ -98,55 +100,73 @@ export const LoginPage: React.FC = () => {
         triggerShake(res.error || 'Could not create account.');
         return;
       }
-      updateProfile({ name: cleanName });
+      if (res.needsConfirmation) {
+        setPendingEmail(res.email || cleanEmail);
+        setOtpToken('');
+        setInfoMsg('Check your email for the 6-digit verification code or confirmation link.');
+        pushToast('Confirmation email sent — enter your 6-digit code to finish');
+        return;
+      }
+      pushToast(`Welcome to Coby LIFE, ${res.user?.displayName || cleanName}`);
     } finally {
       setBusy(false);
     }
   };
 
-  const handleCloudPair = async (e: React.FormEvent) => {
+  const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (busy) return;
-    const decoded = decodeCloudConfigCode(pairingCode);
-    if (!decoded || !isCloudConfigValid(decoded)) {
-      triggerShake('Invalid pairing code. Paste a valid code starting with COBYDB:');
+    if (busy || !pendingEmail) return;
+    if (!otpToken.trim()) {
+      triggerShake('Enter the 6-digit verification code from your email.');
       return;
     }
 
     setBusy(true);
     setError('');
+    setInfoMsg('');
     try {
-      const res = await saveCloudConfig(decoded);
+      const res = await verifySignupOtp(pendingEmail, otpToken);
       if (!res.ok) {
-        triggerShake(res.message || 'Could not connect to Cloud DB.');
+        triggerShake(res.error || 'Invalid or expired verification code.');
         return;
       }
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
-      await pullCloudNow();
-      markSessionAuthenticated(true, 'cloud-paired', 'Synced Device');
-      pushToast('Device paired & synced with Cloud DB');
-    } catch (err) {
-      triggerShake(err instanceof Error ? err.message : 'Cloud pairing failed.');
+      pushToast(`Email verified — welcome, ${res.user?.displayName || pendingEmail}`);
     } finally {
       setBusy(false);
     }
   };
 
-  const titleText =
-    mode === 'signin'
-      ? existingAccount?.displayName
-        ? `Welcome back, ${existingAccount.displayName}`
-        : 'Welcome back'
-      : mode === 'signup'
-        ? 'Create your workspace'
-        : 'Pair with Cloud DB';
+  const handleResendConfirmation = async () => {
+    if (busy || !pendingEmail) return;
+    setBusy(true);
+    setError('');
+    setInfoMsg('');
+    try {
+      const res = await resendSignupConfirmation(pendingEmail);
+      if (!res.ok) {
+        triggerShake(res.error || 'Could not resend confirmation email.');
+        return;
+      }
+      setInfoMsg(`Sent a fresh confirmation email to ${pendingEmail}.`);
+      pushToast('Confirmation email resent');
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  const subtitleText =
-    mode === 'signin'
-      ? 'Sign in to open your personal Tasks & Finance workspace.'
-      : mode === 'signup'
-        ? 'Register a local account on this device to get started.'
-        : 'Paste a COBYDB: pairing code from your primary device to sync & enter.';
+  const isVerifyState = Boolean(pendingEmail);
+
+  const titleText = isVerifyState
+    ? 'Verify your email'
+    : mode === 'signin'
+      ? 'Welcome back'
+      : 'Create your account';
+
+  const subtitleText = isVerifyState
+    ? `Enter the 6-digit code sent to ${pendingEmail} to activate cloud sync.`
+    : mode === 'signin'
+      ? 'Sign in with your Coby LIFE Cloud account to sync tasks and finances across devices.'
+      : 'Create a free cloud account to securely sync your workspace across phone and desktop.';
 
   return (
     <>
@@ -193,35 +213,101 @@ export const LoginPage: React.FC = () => {
           <h1 className="signin__title">{titleText}</h1>
           <p className="signin__sub">{subtitleText}</p>
 
-          <div style={{ marginBottom: 18 }}>
-            <SlidingSegmented<LoginMode>
-              value={mode}
-              onChange={handleModeChange}
-              ariaLabel="Authentication mode"
-              className="seg--full"
-              items={[
-                { id: 'signin', label: 'Sign In' },
-                { id: 'signup', label: 'Create Account' },
-                { id: 'pair', label: 'Cloud Pair' },
-              ]}
-            />
-          </div>
+          {!isVerifyState && (
+            <div style={{ marginBottom: 18 }}>
+              <SlidingSegmented<LoginMode>
+                value={mode}
+                onChange={handleModeChange}
+                ariaLabel="Authentication mode"
+                className="seg--full"
+                items={[
+                  { id: 'signin', label: 'Sign In' },
+                  { id: 'signup', label: 'Create Account' },
+                ]}
+              />
+            </div>
+          )}
 
-          {mode === 'signin' && (
-            <form className="form-stack" onSubmit={handleSignIn} noValidate>
+          {isVerifyState ? (
+            <form className="form-stack" onSubmit={handleVerifyOtp} noValidate>
               <label className="field">
-                <span className="field__label">Email or Username</span>
+                <span className="field__label">6-Digit Verification Code</span>
                 <input
                   className="input"
                   type="text"
-                  autoComplete="username"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
                   autoFocus
-                  value={identifier}
+                  maxLength={8}
+                  value={otpToken}
                   onChange={(e) => {
-                    setIdentifier(e.target.value);
+                    setOtpToken(e.target.value);
                     if (error) setError('');
                   }}
-                  placeholder="you@example.com or username"
+                  placeholder="123456"
+                />
+              </label>
+
+              {infoMsg && (
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--good)' }}>
+                  {infoMsg}
+                </div>
+              )}
+              {error && <span className="field__error">{error}</span>}
+
+              <MagneticButton
+                type="submit"
+                className="btn btn--primary"
+                style={{ width: '100%' }}
+                disabled={busy}
+              >
+                <IconCheck size={15} />
+                <span>{busy ? 'Verifying...' : 'Verify email & enter'}</span>
+              </MagneticButton>
+
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  style={{ flex: 1 }}
+                  disabled={busy}
+                  onClick={() => void handleResendConfirmation()}
+                >
+                  <IconRefresh size={14} />
+                  <span>Resend confirmation email</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={busy}
+                  onClick={() => {
+                    setPendingEmail(null);
+                    setOtpToken('');
+                    setError('');
+                    setInfoMsg('');
+                    setMode('signin');
+                  }}
+                >
+                  <IconMail size={14} />
+                  <span>Back to Sign In</span>
+                </button>
+              </div>
+            </form>
+          ) : mode === 'signin' ? (
+            <form className="form-stack" onSubmit={handleSignIn} noValidate>
+              <label className="field">
+                <span className="field__label">Email</span>
+                <input
+                  className="input"
+                  type="email"
+                  autoComplete="email"
+                  autoFocus
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (error) setError('');
+                  }}
+                  placeholder="you@example.com"
                 />
               </label>
 
@@ -268,9 +354,7 @@ export const LoginPage: React.FC = () => {
                 <span>{busy ? 'Signing in...' : 'Sign in'}</span>
               </MagneticButton>
             </form>
-          )}
-
-          {mode === 'signup' && (
+          ) : (
             <form className="form-stack" onSubmit={handleSignUp} noValidate>
               <label className="field">
                 <span className="field__label">Display Name</span>
@@ -289,22 +373,22 @@ export const LoginPage: React.FC = () => {
               </label>
 
               <label className="field">
-                <span className="field__label">Email or Username</span>
+                <span className="field__label">Email</span>
                 <input
                   className="input"
-                  type="text"
-                  autoComplete="username"
-                  value={identifier}
+                  type="email"
+                  autoComplete="email"
+                  value={email}
                   onChange={(e) => {
-                    setIdentifier(e.target.value);
+                    setEmail(e.target.value);
                     if (error) setError('');
                   }}
-                  placeholder="you@example.com or username"
+                  placeholder="you@example.com"
                 />
               </label>
 
               <label className="field">
-                <span className="field__label">Password (min 4 chars)</span>
+                <span className="field__label">Password (min 6 chars)</span>
                 <input
                   className="input"
                   type="password"
@@ -314,7 +398,7 @@ export const LoginPage: React.FC = () => {
                     setPassword(e.target.value);
                     if (error) setError('');
                   }}
-                  placeholder="At least 4 characters"
+                  placeholder="At least 6 characters"
                 />
               </label>
 
@@ -343,41 +427,7 @@ export const LoginPage: React.FC = () => {
                 disabled={busy}
               >
                 <IconCheck size={15} />
-                <span>{busy ? 'Creating workspace...' : 'Create workspace'}</span>
-              </MagneticButton>
-            </form>
-          )}
-
-          {mode === 'pair' && (
-            <form className="form-stack" onSubmit={handleCloudPair} noValidate>
-              <label className="field">
-                <span className="field__label">Device Pairing Code</span>
-                <textarea
-                  className="textarea"
-                  rows={3}
-                  autoFocus
-                  value={pairingCode}
-                  onChange={(e) => {
-                    setPairingCode(e.target.value);
-                    if (error) setError('');
-                  }}
-                  placeholder="Paste COBYDB:... setup code from Settings → Cloud DB"
-                />
-                <span className="field__hint">
-                  Connects Supabase or Private Gist sync and pulls your encrypted snapshot directly.
-                </span>
-              </label>
-
-              {error && <span className="field__error">{error}</span>}
-
-              <MagneticButton
-                type="submit"
-                className="btn btn--primary"
-                style={{ width: '100%' }}
-                disabled={busy}
-              >
-                <IconCloud size={15} />
-                <span>{busy ? 'Pairing & syncing...' : 'Pair & open workspace'}</span>
+                <span>{busy ? 'Creating account...' : 'Create account'}</span>
               </MagneticButton>
             </form>
           )}

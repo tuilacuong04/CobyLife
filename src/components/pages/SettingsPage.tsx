@@ -15,9 +15,11 @@ import { SlidingSegmented, SwapView } from '../Motion';
 import {
   IconAlert,
   IconCheck,
+  IconCloud,
   IconCopy,
   IconDatabase,
   IconDownload,
+  IconExternal,
   IconLock,
   IconRefresh,
   IconSparkles,
@@ -35,6 +37,8 @@ const AVATAR_OPTIONS = [
 
 export const SettingsPage: React.FC = () => {
   const {
+    authUser,
+    signOutWorkspace,
     state,
     route,
     cloudConfig,
@@ -304,8 +308,16 @@ export const SettingsPage: React.FC = () => {
 
         {activeTab === 'database' && (
           <div className="stack-list" style={{ maxWidth: 720, gap: 16 }}>
-            {/* Live DB Status Card */}
-            <div className="card form-stack">
+            {/* Active Coby LIFE Cloud Account Status Card */}
+            <div
+              className="card form-stack"
+              style={{
+                borderColor:
+                  cloudStatus.state === 'synced'
+                    ? 'color-mix(in srgb, var(--accent) 40%, var(--line))'
+                    : undefined,
+              }}
+            >
               <div className="db-status-bar">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <span
@@ -314,24 +326,24 @@ export const SettingsPage: React.FC = () => {
                     }`}
                     style={{ width: 40, height: 40 }}
                   >
-                    <IconDatabase size={18} />
+                    <IconCloud size={18} />
                   </span>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 15 }}>
-                      {isCloudConnected
-                        ? cloudConfig.provider === 'supabase'
-                          ? 'Supabase PostgreSQL'
-                          : 'GitHub Private Gist DB'
-                        : 'Local IndexedDB only'}
+                      Coby LIFE Cloud Account
                     </div>
                     <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
                       {cloudStatus.state === 'synced'
-                        ? `Auto-syncing Tasks + Finance${formattedSyncTime ? ` · Last synced ${formattedSyncTime}` : ''}`
+                        ? `${authUser?.email || 'Cloud account'} · Auto-syncing Tasks + Finance${
+                            formattedSyncTime ? ` · Last synced ${formattedSyncTime}` : ''
+                          }`
                         : cloudStatus.state === 'syncing'
-                          ? 'Syncing snapshot with Cloud DB...'
+                          ? `${authUser?.email || 'Cloud account'} · Syncing snapshot with Cloud...`
                           : cloudStatus.state === 'error'
-                            ? cloudStatus.error || 'Connection error'
-                            : `Local IndexedDB ${cloudStatus.localDbReady ? 'active' : 'initializing'} — connect a Cloud DB below to sync phone & laptop`}
+                            ? `${authUser?.email || 'Cloud account'} · ${cloudStatus.error || 'Connection error'}`
+                            : `${authUser?.email || 'Signed in'} · Local IndexedDB ${
+                                cloudStatus.localDbReady ? 'active' : 'initializing'
+                              }`}
                     </div>
                   </div>
                 </div>
@@ -350,300 +362,39 @@ export const SettingsPage: React.FC = () => {
                 </span>
               </div>
 
-              {isCloudConnected && (
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className="btn btn--primary btn--sm"
-                    onClick={() => void syncCloudNow()}
-                  >
-                    <IconRefresh size={14} />
-                    Sync now
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    onClick={() => void pushCloudNow()}
-                  >
-                    <IconUpload size={14} />
-                    Push local → DB
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    onClick={() => void pullCloudNow()}
-                  >
-                    <IconDownload size={14} />
-                    Pull DB → local
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    onClick={handleCopyDeviceCode}
-                  >
-                    <IconCopy size={14} />
-                    Copy device code
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--danger btn--sm"
-                    style={{ marginLeft: 'auto' }}
-                    onClick={disconnectCloudDb}
-                  >
-                    Disconnect
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Cloud Provider Configuration */}
-            <div className="card form-stack">
-              <div>
-                <h2 className="card__title">Personal Cloud Database</h2>
-                <p className="card__sub">
-                  Store your entire personal workspace (<strong>Tasks</strong>,{' '}
-                  <strong>Finance</strong> &amp; <strong>Settings</strong>) in your own private
-                  database. Credentials stay only on your devices.
-                </p>
-              </div>
-
-              <div className="seg">
-                <button
-                  type="button"
-                  className={`seg__btn ${dbProvider === 'supabase' ? 'is-active' : ''}`}
-                  onClick={() => setDbProvider('supabase')}
-                >
-                  Supabase (Postgres)
-                </button>
-                <button
-                  type="button"
-                  className={`seg__btn ${dbProvider === 'gist' ? 'is-active' : ''}`}
-                  onClick={() => setDbProvider('gist')}
-                >
-                  GitHub Gist
-                </button>
-              </div>
-
-              {dbProvider === 'supabase' ? (
-                <form className="form-stack" onSubmit={handleConnectDb}>
-                  <div
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: 14,
-                      background: 'var(--well)',
-                      border: '1px solid var(--line)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 10,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 10,
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 700 }}>
-                          Step 1 — Create secure vault table (one-time SQL)
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                          Free tier on supabase.com (500 MB Postgres). Run once in SQL Editor.
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          onClick={handleCopySql}
-                        >
-                          {sqlCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-                          {sqlCopied ? 'Copied SQL' : 'Copy SQL'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          onClick={() => setShowSql((v) => !v)}
-                        >
-                          {showSql ? 'Hide' : 'View SQL'}
-                        </button>
-                      </div>
-                    </div>
-                    {showSql && <pre className="sql-box">{SUPABASE_SETUP_SQL}</pre>}
-                  </div>
-
-                  <div className="form-grid">
-                    <label className="field">
-                      <span className="field__label">Supabase Project URL</span>
-                      <input
-                        className="input"
-                        placeholder="https://xxxxx.supabase.co"
-                        value={dbDraft.supabaseUrl}
-                        onChange={(e) =>
-                          setDbDraft((d) => ({ ...d, supabaseUrl: e.target.value }))
-                        }
-                      />
-                    </label>
-                    <label className="field">
-                      <span className="field__label">Vault ID</span>
-                      <input
-                        className="input"
-                        placeholder="coby-main"
-                        value={dbDraft.supabaseVaultId}
-                        onChange={(e) =>
-                          setDbDraft((d) => ({ ...d, supabaseVaultId: e.target.value }))
-                        }
-                      />
-                    </label>
-                  </div>
-
-                  <label className="field">
-                    <span className="field__label">Supabase Anon Key</span>
-                    <input
-                      className="input"
-                      type="password"
-                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                      value={dbDraft.supabaseAnonKey}
-                      onChange={(e) =>
-                        setDbDraft((d) => ({ ...d, supabaseAnonKey: e.target.value }))
-                      }
-                    />
-                  </label>
-
-                  <label className="field">
-                    <span className="field__label">Personal Vault Secret (min 4 chars)</span>
-                    <input
-                      className="input"
-                      type="password"
-                      placeholder="Private passphrase protecting your Postgres row (SHA-256 hashed)"
-                      value={dbDraft.supabaseSecret}
-                      onChange={(e) =>
-                        setDbDraft((d) => ({ ...d, supabaseSecret: e.target.value }))
-                      }
-                    />
-                    <span className="field__hint">
-                      Only devices with this exact passphrase can pull or overwrite your database.
-                    </span>
-                  </label>
-
-                  <label className="signin__check">
-                    <input
-                      type="checkbox"
-                      checked={dbDraft.autoSync}
-                      onChange={(e) =>
-                        setDbDraft((d) => ({ ...d, autoSync: e.target.checked }))
-                      }
-                    />
-                    <span>Auto-sync automatically after changes &amp; on app open</span>
-                  </label>
-
-                  {dbMessage && (
-                    <div
-                      style={{
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                        color: dbMessage.ok ? 'var(--good)' : 'var(--bad)',
-                      }}
-                    >
-                      {dbMessage.text}
-                    </div>
-                  )}
-
-                  <div>
-                    <button type="submit" className="btn btn--primary" disabled={dbBusy}>
-                      <IconDatabase size={15} />
-                      {dbBusy ? 'Connecting...' : 'Connect & Sync Supabase DB'}
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <form className="form-stack" onSubmit={handleConnectDb}>
-                  <p className="field__hint" style={{ margin: 0 }}>
-                    Uses a <strong>Secret (Private) Gist</strong> on your own GitHub account as a
-                    zero-cost JSON database. Create a GitHub token with only the <code>gist</code>{' '}
-                    permission.
-                  </p>
-                  <label className="field">
-                    <span className="field__label">GitHub Personal Access Token (gist scope)</span>
-                    <input
-                      className="input"
-                      type="password"
-                      placeholder="ghp_... or github_pat_..."
-                      value={dbDraft.gistToken}
-                      onChange={(e) => setDbDraft((d) => ({ ...d, gistToken: e.target.value }))}
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field__label">Existing Gist ID (optional)</span>
-                    <input
-                      className="input"
-                      placeholder="Leave empty on first device to auto-create a private Gist"
-                      value={dbDraft.gistId}
-                      onChange={(e) => setDbDraft((d) => ({ ...d, gistId: e.target.value }))}
-                    />
-                  </label>
-                  <label className="signin__check">
-                    <input
-                      type="checkbox"
-                      checked={dbDraft.autoSync}
-                      onChange={(e) =>
-                        setDbDraft((d) => ({ ...d, autoSync: e.target.checked }))
-                      }
-                    />
-                    <span>Auto-sync automatically after changes &amp; on app open</span>
-                  </label>
-
-                  {dbMessage && (
-                    <div
-                      style={{
-                        fontSize: 12.5,
-                        fontWeight: 600,
-                        color: dbMessage.ok ? 'var(--good)' : 'var(--bad)',
-                      }}
-                    >
-                      {dbMessage.text}
-                    </div>
-                  )}
-
-                  <div>
-                    <button type="submit" className="btn btn--primary" disabled={dbBusy}>
-                      <IconDatabase size={15} />
-                      {dbBusy ? 'Connecting...' : 'Connect & Sync Private Gist'}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-
-            {/* Quick Phone / Laptop Device Pairing */}
-            <div className="card form-stack">
-              <div>
-                <h3 className="card__title" style={{ fontSize: 15 }}>
-                  Link another device (Phone ↔ Laptop)
-                </h3>
-                <p className="card__sub">
-                  Already connected on one device? Tap <strong>Copy device code</strong> above, then
-                  paste it here on your second device to connect in 1 tap.
-                </p>
-              </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <input
-                  className="input"
-                  style={{ flex: 1, minWidth: 200 }}
-                  placeholder="Paste COBYDB:... setup code"
-                  value={pairingInput}
-                  onChange={(e) => setPairingInput(e.target.value)}
-                />
                 <button
                   type="button"
-                  className="btn btn--ghost"
-                  disabled={dbBusy || !pairingInput.trim()}
-                  onClick={() => void handleApplyDeviceCode()}
+                  className="btn btn--primary btn--sm"
+                  onClick={() => void syncCloudNow()}
                 >
-                  Apply code
+                  <IconRefresh size={14} />
+                  Sync now
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => void pushCloudNow()}
+                >
+                  <IconUpload size={14} />
+                  Push local → Cloud
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => void pullCloudNow()}
+                >
+                  <IconDownload size={14} />
+                  Pull Cloud → local
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--danger btn--sm"
+                  style={{ marginLeft: 'auto' }}
+                  onClick={() => void signOutWorkspace()}
+                >
+                  <IconExternal size={14} />
+                  Sign out
                 </button>
               </div>
             </div>
@@ -669,6 +420,257 @@ export const SettingsPage: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {/* Optional Custom External DB / GitHub Gist */}
+            <details className="card form-stack">
+              <summary
+                style={{
+                  cursor: 'pointer',
+                  fontWeight: 700,
+                  fontSize: 14,
+                  color: 'var(--text)',
+                }}
+              >
+                Advanced: Custom Self-Hosted DB or GitHub Gist ({isCloudConnected ? 'Configured' : 'Optional'})
+              </summary>
+
+              <div className="stack-list" style={{ gap: 16, marginTop: 12 }}>
+                <p className="card__sub" style={{ margin: 0 }}>
+                  Your Coby LIFE Cloud Account already syncs automatically via Supabase RLS. You can
+                  optionally configure an additional custom database or Private Gist below.
+                </p>
+
+                <div className="seg">
+                  <button
+                    type="button"
+                    className={`seg__btn ${dbProvider === 'supabase' ? 'is-active' : ''}`}
+                    onClick={() => setDbProvider('supabase')}
+                  >
+                    Supabase (Postgres)
+                  </button>
+                  <button
+                    type="button"
+                    className={`seg__btn ${dbProvider === 'gist' ? 'is-active' : ''}`}
+                    onClick={() => setDbProvider('gist')}
+                  >
+                    GitHub Gist
+                  </button>
+                </div>
+
+                {dbProvider === 'supabase' ? (
+                  <form className="form-stack" onSubmit={handleConnectDb}>
+                    <div
+                      style={{
+                        padding: '12px 14px',
+                        borderRadius: 14,
+                        background: 'var(--well)',
+                        border: '1px solid var(--line)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 10,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>
+                            Step 1 — Create custom vault table (one-time SQL)
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                            Free tier on supabase.com (500 MB Postgres). Run once in SQL Editor.
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            onClick={handleCopySql}
+                          >
+                            {sqlCopied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                            {sqlCopied ? 'Copied SQL' : 'Copy SQL'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            onClick={() => setShowSql((v) => !v)}
+                          >
+                            {showSql ? 'Hide' : 'View SQL'}
+                          </button>
+                        </div>
+                      </div>
+                      {showSql && <pre className="sql-box">{SUPABASE_SETUP_SQL}</pre>}
+                    </div>
+
+                    <div className="form-grid">
+                      <label className="field">
+                        <span className="field__label">Supabase Project URL</span>
+                        <input
+                          className="input"
+                          placeholder="https://xxxxx.supabase.co"
+                          value={dbDraft.supabaseUrl}
+                          onChange={(e) =>
+                            setDbDraft((d) => ({ ...d, supabaseUrl: e.target.value }))
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        <span className="field__label">Vault ID</span>
+                        <input
+                          className="input"
+                          placeholder="coby-main"
+                          value={dbDraft.supabaseVaultId}
+                          onChange={(e) =>
+                            setDbDraft((d) => ({ ...d, supabaseVaultId: e.target.value }))
+                          }
+                        />
+                      </label>
+                    </div>
+
+                    <label className="field">
+                      <span className="field__label">Supabase Anon Key</span>
+                      <input
+                        className="input"
+                        type="password"
+                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                        value={dbDraft.supabaseAnonKey}
+                        onChange={(e) =>
+                          setDbDraft((d) => ({ ...d, supabaseAnonKey: e.target.value }))
+                        }
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span className="field__label">Personal Vault Secret (min 4 chars)</span>
+                      <input
+                        className="input"
+                        type="password"
+                        placeholder="Private passphrase protecting your Postgres row (SHA-256 hashed)"
+                        value={dbDraft.supabaseSecret}
+                        onChange={(e) =>
+                          setDbDraft((d) => ({ ...d, supabaseSecret: e.target.value }))
+                        }
+                      />
+                    </label>
+
+                    {dbMessage && (
+                      <div
+                        style={{
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          color: dbMessage.ok ? 'var(--good)' : 'var(--bad)',
+                        }}
+                      >
+                        {dbMessage.text}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="submit" className="btn btn--primary btn--sm" disabled={dbBusy}>
+                        <IconDatabase size={14} />
+                        {dbBusy ? 'Connecting...' : 'Save Custom Supabase'}
+                      </button>
+                      {isCloudConnected && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            onClick={handleCopyDeviceCode}
+                          >
+                            <IconCopy size={14} />
+                            Copy COBYDB code
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--danger btn--sm"
+                            onClick={disconnectCloudDb}
+                          >
+                            Disconnect Custom DB
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </form>
+                ) : (
+                  <form className="form-stack" onSubmit={handleConnectDb}>
+                    <p className="field__hint" style={{ margin: 0 }}>
+                      Uses a <strong>Secret (Private) Gist</strong> on your own GitHub account.
+                    </p>
+                    <label className="field">
+                      <span className="field__label">GitHub Personal Access Token (gist scope)</span>
+                      <input
+                        className="input"
+                        type="password"
+                        placeholder="ghp_... or github_pat_..."
+                        value={dbDraft.gistToken}
+                        onChange={(e) => setDbDraft((d) => ({ ...d, gistToken: e.target.value }))}
+                      />
+                    </label>
+                    <label className="field">
+                      <span className="field__label">Existing Gist ID (optional)</span>
+                      <input
+                        className="input"
+                        placeholder="Leave empty on first device to auto-create a private Gist"
+                        value={dbDraft.gistId}
+                        onChange={(e) => setDbDraft((d) => ({ ...d, gistId: e.target.value }))}
+                      />
+                    </label>
+
+                    {dbMessage && (
+                      <div
+                        style={{
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          color: dbMessage.ok ? 'var(--good)' : 'var(--bad)',
+                        }}
+                      >
+                        {dbMessage.text}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="submit" className="btn btn--primary btn--sm" disabled={dbBusy}>
+                        <IconDatabase size={14} />
+                        {dbBusy ? 'Connecting...' : 'Save Custom Gist'}
+                      </button>
+                      {isCloudConnected && (
+                        <button
+                          type="button"
+                          className="btn btn--danger btn--sm"
+                          onClick={disconnectCloudDb}
+                        >
+                          Disconnect Custom DB
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                )}
+
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid var(--line)' }}>
+                  <input
+                    className="input"
+                    style={{ flex: 1, minWidth: 200 }}
+                    placeholder="Paste COBYDB:... custom setup code"
+                    value={pairingInput}
+                    onChange={(e) => setPairingInput(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    disabled={dbBusy || !pairingInput.trim()}
+                    onClick={() => void handleApplyDeviceCode()}
+                  >
+                    Apply code
+                  </button>
+                </div>
+              </div>
+            </details>
           </div>
         )}
 
@@ -808,7 +810,7 @@ export const SettingsPage: React.FC = () => {
               id: 'all',
               title: 'Clear All Workspace Data',
               description:
-                'Wipe Tasks, Finance & Future Modules, reset wallets to 0, and clear local IndexedDB snapshot.',
+                'Wipe Tasks, Finance & Future Modules, reset wallets to 0, clear local IndexedDB snapshot, and sync wipe to Cloud.',
               actionLabel: 'Clear Workspace',
               confirmLabel: 'Confirm Wipe',
               busyLabel: 'Clearing...',
@@ -819,7 +821,7 @@ export const SettingsPage: React.FC = () => {
               id: 'factory',
               title: 'Factory Reset Device',
               description:
-                'Wipe all local data, IndexedDB, Cloud DB config & credentials, and sign out of this browser.',
+                'Wipe local browser cache, credentials, and sign out of this device.',
               actionLabel: 'Factory Reset',
               confirmLabel: 'Confirm Reset',
               busyLabel: 'Resetting...',

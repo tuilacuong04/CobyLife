@@ -1,5 +1,5 @@
 import { PersistedAppState } from '../types';
-import { createStarterState } from '../data/seedData';
+import { createEmptyPersonalState, createStarterState } from '../data/seedData';
 import {
   DEFAULT_AUTO_RULES,
   DEFAULT_QUICK_PRESETS,
@@ -9,8 +9,19 @@ export const APP_STORAGE_KEY = 'coby_life_os_v1';
 const LEGACY_STORAGE_KEY = 'sylva_personal_os_v2';
 export const LOCAL_UPDATED_AT_KEY = 'coby_life_updated_at_v1';
 
-export function hasStoredAppState(): boolean {
+function stateStorageKey(userId?: string): string {
+  return userId ? `coby_life_os_v2:${userId}` : APP_STORAGE_KEY;
+}
+
+function updatedAtStorageKey(userId?: string): string {
+  return userId ? `coby_life_updated_at_v2:${userId}` : LOCAL_UPDATED_AT_KEY;
+}
+
+export function hasStoredAppState(userId?: string): boolean {
   try {
+    if (userId) {
+      return Boolean(window.localStorage.getItem(stateStorageKey(userId)));
+    }
     return Boolean(
       window.localStorage.getItem(APP_STORAGE_KEY) ||
         window.localStorage.getItem(LEGACY_STORAGE_KEY)
@@ -20,17 +31,17 @@ export function hasStoredAppState(): boolean {
   }
 }
 
-export function getLocalUpdatedAt(): string {
+export function getLocalUpdatedAt(userId?: string): string {
   try {
-    return window.localStorage.getItem(LOCAL_UPDATED_AT_KEY) || '';
+    return window.localStorage.getItem(updatedAtStorageKey(userId)) || '';
   } catch {
     return '';
   }
 }
 
-export function setLocalUpdatedAt(iso: string): void {
+export function setLocalUpdatedAt(iso: string, userId?: string): void {
   try {
-    window.localStorage.setItem(LOCAL_UPDATED_AT_KEY, iso);
+    window.localStorage.setItem(updatedAtStorageKey(userId), iso);
   } catch {
     // Ignore
   }
@@ -96,8 +107,14 @@ export function normalizePersistedState(raw: unknown): PersistedAppState {
   };
 }
 
-export function loadAppState(): PersistedAppState {
+export function loadAppState(userId?: string): PersistedAppState {
   try {
+    if (userId) {
+      const raw = window.localStorage.getItem(stateStorageKey(userId));
+      if (!raw) return createEmptyPersonalState();
+      return normalizePersistedState(JSON.parse(raw));
+    }
+
     let raw = window.localStorage.getItem(APP_STORAGE_KEY);
     if (!raw) {
       const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
@@ -109,22 +126,28 @@ export function loadAppState(): PersistedAppState {
     if (!raw) return createStarterState();
     return normalizePersistedState(JSON.parse(raw));
   } catch {
-    return createStarterState();
+    return userId ? createEmptyPersonalState() : createStarterState();
   }
 }
 
-export function saveAppState(state: PersistedAppState): void {
+export function saveAppState(state: PersistedAppState, userId?: string): void {
   try {
-    window.localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(stateStorageKey(userId), JSON.stringify(state));
   } catch {
     // Ignore storage quota errors in restricted environments
   }
 }
 
-export function clearAppState(): void {
+export function clearAppState(userId?: string): void {
   try {
+    if (userId) {
+      window.localStorage.removeItem(stateStorageKey(userId));
+      window.localStorage.removeItem(updatedAtStorageKey(userId));
+      return;
+    }
     window.localStorage.removeItem(APP_STORAGE_KEY);
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    window.localStorage.removeItem(LOCAL_UPDATED_AT_KEY);
   } catch {
     // Ignore
   }
