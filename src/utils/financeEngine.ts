@@ -8,7 +8,7 @@ import {
   QuickPreset,
   TxType,
 } from '../types';
-import { addDaysIso, formatMonthShort, localIsoDate } from './format';
+import { addDaysIso, formatMonthShort, localIsoDate, shiftMonthKey } from './format';
 import { ParsedGmailAlert } from './vnGmailParser';
 
 export const DEFAULT_AUTO_RULES: FinanceAutoRule[] = [
@@ -190,7 +190,17 @@ export const VN_BANK_GMAIL_GUIDE: BankGmailGuideItem[] = [
   },
 ];
 
-/* ======================= Payday Cycle Math ======================= */
+/* ======================= Payday Cycle & Multi-Period Math ======================= */
+
+export type FinancePeriodKind = 'cycle' | '3m' | '6m' | 'year' | 'all' | 'custom';
+
+export interface FinancePeriodSelection {
+  kind: FinancePeriodKind;
+  cycleKey: string; // Anchor YYYY-MM for 'cycle', '3m', '6m'
+  year: number;     // Anchor YYYY for 'year'
+  startIso?: string; // Custom start YYYY-MM-DD (inclusive)
+  endIso?: string;   // Custom end YYYY-MM-DD (inclusive)
+}
 
 export interface CycleRange {
   cycleKey: string; // YYYY-MM (named by start month when paydayDay > 1, or calendar month when 1)
@@ -202,6 +212,9 @@ export interface CycleRange {
   daysElapsed: number;
   daysRemaining: number;
   isCurrent: boolean;
+  periodKind?: FinancePeriodKind;
+  budgetMultiplier?: number;
+  coveredCycleKeys?: string[];
 }
 
 function clampPayday(day?: number): number {
@@ -215,6 +228,23 @@ function daysBetweenInclusive(startIso: string, endIso: string): number {
   const s = Date.UTC(sy, (sm || 1) - 1, sd || 1);
   const e = Date.UTC(ey, (em || 1) - 1, ed || 1);
   return Math.max(1, Math.round((e - s) / 86_400_000) + 1);
+}
+
+function computeWindowProgress(startIso: string, endIso: string, todayIso: string) {
+  const daysTotal = daysBetweenInclusive(startIso, endIso);
+  const isCurrent = todayIso >= startIso && todayIso <= endIso;
+  let daysElapsed = daysTotal;
+  let daysRemaining = 0;
+
+  if (isCurrent) {
+    daysElapsed = daysBetweenInclusive(startIso, todayIso);
+    daysRemaining = Math.max(1, daysTotal - daysElapsed + 1);
+  } else if (todayIso < startIso) {
+    daysElapsed = 0;
+    daysRemaining = daysTotal;
+  }
+
+  return { daysTotal, daysElapsed, daysRemaining, isCurrent };
 }
 
 export function currentCycleKey(now = new Date(), paydayDay = 1): string {
@@ -231,6 +261,42 @@ export function currentCycleKey(now = new Date(), paydayDay = 1): string {
     return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
   }
   return `${y}-${String(m).padStart(2, '0')}`;
+}
+
+export function dateToCycleKey(isoDate: string, paydayDay = 1): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  if (!y || !m) return currentCycleKey(new Date(), paydayDay);
+  return currentCycleKey(new Date(y, m - 1, d || 1), paydayDay);
+}
+
+export function listCycleKeysBetween(startKey: string, endKey: string): string[] {
+  const [sy, sm] = startKey.split('-').map(Number);
+  const [ey, em] = endKey.split('-').map(Number);
+  if (!sy || !sm || !ey || !em) return [startKey];
+  const totalMonths = (ey - sy) * 12 + (em - sm);
+  if (totalMonths <= 0) return [startKey];
+  const capped = Math.min(120, totalMonths);
+  return Array.from({ length: capped + 1 }, (_, i) => shiftMonthKey(startKey, i));
+}
+
+export function createDefaultFinancePeriod(
+  now = new Date(),
+  paydayDay = 1
+): FinancePeriodSelection {
+  const ck = currentCycleKey(now, paydayDay);
+  return {
+    kind: 'cycle',
+    cycleKey: ck,
+    year: Number(ck.slice(0, 4)) || now.getFullYear(),
+  };
+}
+
+export function isDefaultCurrentPeriod(
+  selection: FinancePeriodSelection,
+  paydayDay = 1,
+  now = new Date()
+): boolean {
+  return selection.kind === 'cycle' && selection.cycleKey === currentCycleKey(now, paydayDay);
 }
 
 export function getCycleRange(cycleKey: string, paydayDay = 1, todayIso = localIsoDate()): CycleRange {
@@ -263,18 +329,11 @@ export function getCycleRange(cycleKey: string, paydayDay = 1, todayIso = localI
     label = `${formatMonthShort(sKey)} ${p} – ${formatMonthShort(eKey)} ${endDt.getDate()}`;
   }
 
-  const daysTotal = daysBetweenInclusive(startIso, endIso);
-  const isCurrent = todayIso >= startIso && todayIso <= endIso;
-  let daysElapsed = daysTotal;
-  let daysRemaining = 0;
-
-  if (isCurrent) {
-    daysElapsed = daysBetweenInclusive(startIso, todayIso);
-    daysRemaining = Math.max(1, daysTotal - daysElapsed + 1);
-  } else if (todayIso < startIso) {
-    daysElapsed = 0;
-    daysRemaining = daysTotal;
-  }
+  const { daysTotal, daysElapsed, daysRemaining, isCurrent } = computeWindowProgress(
+    startIso,
+    endIso,
+    todayIso
+  );
 
   return {
     cycleKey,
@@ -286,6 +345,252 @@ export function getCycleRange(cycleKey: string, paydayDay = 1, todayIso = localI
     daysElapsed,
     daysRemaining,
     isCurrent,
+    periodKind: 'cycle',
+    budgetMultiplier: 1,
+    coveredCycleKeys: [cycleKey],
+  };
+}
+
+function formatMultiCycleLabel(startKey: string, endKey: string, startIso: string, endIso: string, paydayDay: number) {
+  const p = clampPayday(paydayDay);
+  const [sy] = startKey.split('-').map(Number);
+  const [ey] = endKey.split('-').map(Number);
+  if (p === 1) {
+    if (sy === ey) {
+      const lbl = `${formatMonthShort(startKey)} – ${formatMonthShort(endKey)} ${ey}`;
+      return { label: lbl, shortLabel: lbl };
+    }
+    const sYr = String(sy).slice(-2);
+    const eYr = String(ey).slice(-2);
+    const lbl = `${formatMonthShort(startKey)} '${sYr} – ${formatMonthShort(endKey)} '${eYr}`;
+    return { label: lbl, shortLabel: lbl };
+  }
+  const [, sm, sd] = startIso.split('-').map(Number);
+  const [eIsoY, em, ed] = endIso.split('-').map(Number);
+  const sMon = formatMonthShort(`${sy}-${String(sm).padStart(2, '0')}`);
+  const eMon = formatMonthShort(`${eIsoY}-${String(em).padStart(2, '0')}`);
+  const lbl =
+    sy === eIsoY
+      ? `${sMon} ${sd} – ${eMon} ${ed}`
+      : `${sMon} ${sd} '${String(sy).slice(-2)} – ${eMon} ${ed} '${String(eIsoY).slice(-2)}`;
+  return { label: lbl, shortLabel: lbl };
+}
+
+function formatCustomIsoLabel(startIso: string, endIso: string) {
+  const [sy, sm, sd] = startIso.split('-').map(Number);
+  const [ey, em, ed] = endIso.split('-').map(Number);
+  const sMon = formatMonthShort(`${sy}-${String(sm).padStart(2, '0')}`);
+  const eMon = formatMonthShort(`${ey}-${String(em).padStart(2, '0')}`);
+
+  if (startIso === endIso) {
+    return {
+      label: `${sMon} ${sd}, ${sy}`,
+      shortLabel: `${sMon} ${sd}`,
+    };
+  }
+  if (sy === ey && sm === em) {
+    return {
+      label: `${sMon} ${sd} – ${ed}, ${sy}`,
+      shortLabel: `${sMon} ${sd}–${ed}`,
+    };
+  }
+  if (sy === ey) {
+    return {
+      label: `${sMon} ${sd} – ${eMon} ${ed}, ${sy}`,
+      shortLabel: `${sMon} ${sd} – ${eMon} ${ed}`,
+    };
+  }
+  const sYr = String(sy).slice(-2);
+  const eYr = String(ey).slice(-2);
+  return {
+    label: `${sMon} ${sd}, '${sYr} – ${eMon} ${ed}, '${eYr}`,
+    shortLabel: `${sMon} '${sYr} – ${eMon} '${eYr}`,
+  };
+}
+
+export function resolveFinancePeriod(
+  selection: FinancePeriodSelection,
+  paydayDay = 1,
+  transactions: FinanceTransaction[] = [],
+  todayIso = localIsoDate()
+): CycleRange {
+  const p = clampPayday(paydayDay);
+
+  if (selection.kind === 'cycle') {
+    return getCycleRange(selection.cycleKey, p, todayIso);
+  }
+
+  if (selection.kind === '3m' || selection.kind === '6m') {
+    const count = selection.kind === '3m' ? 3 : 6;
+    const endKey = selection.cycleKey;
+    const startKey = shiftMonthKey(endKey, -(count - 1));
+    const firstRange = getCycleRange(startKey, p, todayIso);
+    const lastRange = getCycleRange(endKey, p, todayIso);
+    const { label, shortLabel } = formatMultiCycleLabel(
+      startKey,
+      endKey,
+      firstRange.startIso,
+      lastRange.endIso,
+      p
+    );
+    const progress = computeWindowProgress(firstRange.startIso, lastRange.endIso, todayIso);
+    return {
+      cycleKey: endKey,
+      startIso: firstRange.startIso,
+      endIso: lastRange.endIso,
+      label,
+      shortLabel,
+      ...progress,
+      periodKind: selection.kind,
+      budgetMultiplier: count,
+      coveredCycleKeys: listCycleKeysBetween(startKey, endKey),
+    };
+  }
+
+  if (selection.kind === 'year') {
+    const yr = selection.year || Number(todayIso.slice(0, 4));
+    const startKey = `${yr}-01`;
+    const endKey = `${yr}-12`;
+    const firstRange = getCycleRange(startKey, p, todayIso);
+    const lastRange = getCycleRange(endKey, p, todayIso);
+    const progress = computeWindowProgress(firstRange.startIso, lastRange.endIso, todayIso);
+    const anchorKey = progress.isCurrent ? dateToCycleKey(todayIso, p) : endKey;
+    return {
+      cycleKey: anchorKey,
+      startIso: firstRange.startIso,
+      endIso: lastRange.endIso,
+      label: `Year ${yr}`,
+      shortLabel: `${yr}`,
+      ...progress,
+      periodKind: 'year',
+      budgetMultiplier: 12,
+      coveredCycleKeys: listCycleKeysBetween(startKey, endKey),
+    };
+  }
+
+  if (selection.kind === 'all') {
+    let minIso = '';
+    let maxIso = '';
+    for (const tx of transactions) {
+      if (!tx.date) continue;
+      if (!minIso || tx.date < minIso) minIso = tx.date;
+      if (!maxIso || tx.date > maxIso) maxIso = tx.date;
+    }
+    const yearStartIso = `${todayIso.slice(0, 4)}-01-01`;
+    const startIso = minIso ? (minIso < todayIso ? minIso : todayIso) : yearStartIso;
+    const curKey = dateToCycleKey(todayIso, p);
+    const curCycle = getCycleRange(curKey, p, todayIso);
+    const endIso = maxIso && maxIso > curCycle.endIso ? maxIso : curCycle.endIso;
+
+    const startCk = dateToCycleKey(startIso, p);
+    const endCk = dateToCycleKey(endIso, p);
+    const covered = listCycleKeysBetween(startCk, endCk);
+    const progress = computeWindowProgress(startIso, endIso, todayIso);
+
+    return {
+      cycleKey: curKey,
+      startIso,
+      endIso,
+      label: 'All Time',
+      shortLabel: 'All Time',
+      ...progress,
+      periodKind: 'all',
+      budgetMultiplier: Math.max(1, covered.length),
+      coveredCycleKeys: covered,
+    };
+  }
+
+  // Custom date range (startIso -> endIso, auto-sorted)
+  const fallbackRange = getCycleRange(selection.cycleKey, p, todayIso);
+  const rawStart = selection.startIso || fallbackRange.startIso;
+  const rawEnd = selection.endIso || fallbackRange.endIso;
+  const [startIso, endIso] = rawStart <= rawEnd ? [rawStart, rawEnd] : [rawEnd, rawStart];
+
+  const startCk = dateToCycleKey(startIso, p);
+  const endCk = dateToCycleKey(endIso, p);
+  const firstCycle = getCycleRange(startCk, p, todayIso);
+  const lastCycle = getCycleRange(endCk, p, todayIso);
+  const covered = listCycleKeysBetween(startCk, endCk);
+  const progress = computeWindowProgress(startIso, endIso, todayIso);
+
+  const isExactMultiCycles =
+    startCk !== endCk && startIso === firstCycle.startIso && endIso === lastCycle.endIso;
+  const isExactSingleCycle =
+    startCk === endCk && startIso === firstCycle.startIso && endIso === firstCycle.endIso;
+
+  let budgetMultiplier: number;
+  if (isExactSingleCycle) {
+    budgetMultiplier = 1;
+  } else if (isExactMultiCycles) {
+    budgetMultiplier = covered.length;
+  } else if (startCk === endCk) {
+    budgetMultiplier = progress.daysTotal / Math.max(1, firstCycle.daysTotal);
+  } else {
+    budgetMultiplier = progress.daysTotal / 30.4375;
+  }
+
+  const { label, shortLabel } = isExactMultiCycles
+    ? formatMultiCycleLabel(startCk, endCk, startIso, endIso, p)
+    : formatCustomIsoLabel(startIso, endIso);
+
+  return {
+    cycleKey: endCk,
+    startIso,
+    endIso,
+    label,
+    shortLabel,
+    ...progress,
+    periodKind: 'custom',
+    budgetMultiplier,
+    coveredCycleKeys: covered,
+  };
+}
+
+export function shiftFinancePeriod(
+  selection: FinancePeriodSelection,
+  delta: -1 | 1,
+  paydayDay = 1
+): FinancePeriodSelection {
+  const p = clampPayday(paydayDay);
+
+  if (selection.kind === 'all') {
+    return selection;
+  }
+
+  if (selection.kind === 'year') {
+    const nextYear = selection.year + delta;
+    const monthPart = selection.cycleKey.slice(5, 7) || '01';
+    return {
+      ...selection,
+      year: nextYear,
+      cycleKey: `${nextYear}-${monthPart}`,
+    };
+  }
+
+  if (selection.kind === 'custom' && selection.startIso && selection.endIso) {
+    const [s, e] =
+      selection.startIso <= selection.endIso
+        ? [selection.startIso, selection.endIso]
+        : [selection.endIso, selection.startIso];
+    const spanDays = daysBetweenInclusive(s, e);
+    const nextStart = addDaysIso(s, delta * spanDays);
+    const nextEnd = addDaysIso(e, delta * spanDays);
+    const nextCk = dateToCycleKey(nextEnd, p);
+    return {
+      kind: 'custom',
+      startIso: nextStart,
+      endIso: nextEnd,
+      cycleKey: nextCk,
+      year: Number(nextCk.slice(0, 4)) || selection.year,
+    };
+  }
+
+  // 'cycle', '3m', '6m' — step anchor cycle by 1 month
+  const nextCk = shiftMonthKey(selection.cycleKey, delta);
+  return {
+    ...selection,
+    cycleKey: nextCk,
+    year: Number(nextCk.slice(0, 4)) || selection.year,
   };
 }
 
@@ -332,8 +637,12 @@ export function computeSafeToSpend(
   finance: FinanceState,
   range: CycleRange
 ): SafeToSpendMetrics {
-  const budgetMap = new Map(finance.budgets.map((b) => [b.categoryId, b.monthlyLimit]));
-  const totalBudget = finance.budgets.reduce((s, b) => s + b.monthlyLimit, 0);
+  const multiplier = range.budgetMultiplier ?? 1;
+  const budgetMap = new Map(
+    finance.budgets.map((b) => [b.categoryId, Math.round(b.monthlyLimit * multiplier)])
+  );
+  const baseMonthlyBudget = finance.budgets.reduce((s, b) => s + b.monthlyLimit, 0);
+  const totalBudget = Math.round(baseMonthlyBudget * multiplier);
 
   let budgetedSpent = 0;
   let totalPersonalExpense = 0;

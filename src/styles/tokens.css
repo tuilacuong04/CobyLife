@@ -1,5 +1,5 @@
 :root {
-  --font: 'Urbanist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font: 'Plus Jakarta Sans', 'Be Vietnam Pro', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   /* Light theme — Milk Glass (exact Sylva palette, zero backdrop-filter jank) */
   --bg: #e9ece7;
@@ -133,6 +133,7 @@ body {
   color: var(--text);
   font: 500 14px/1.45 var(--font);
   font-variant-numeric: tabular-nums;
+  font-synthesis-weight: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
