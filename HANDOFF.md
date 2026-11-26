@@ -9,7 +9,7 @@
 - **Repository:** https://github.com/tuilacuong04/CobyLife (currently **Public** for free GitHub Pages)
 - **Communication Language:** User prefers **Vietnamese** in chat; **UI language MUST stay crisp English** so typography/layout proportions match cleanly (while keeping full **VND `₫` / USD `$`** currency support and shorthand amount parsing like `50k`, `1.5m`, `1.5tr`).
 - **Default Landing Page:** Opens straight to **`Overview`** (`/CobyLife/` → `overview`).
-- **Visual Style:** Smoked Glass (Dark, default) & Milk Glass (Light) using `Urbanist` font, lime accent `#c4ef4f`, GSAP + 240 Hz spring sidebar/dock/flyer morphs, bottom-sheet modals/drawers on mobile.
+- **Visual Style:** Smoked Glass (Dark, default) & Milk Glass (Light) using `Plus Jakarta Sans` (`wght 400–800`, full Vietnamese `đ/Đ/₫` & OpenType `tnum` tabular figures, with `Be Vietnam Pro` fallback), lime accent `#c4ef4f`, GSAP + 240 Hz spring sidebar/dock/flyer morphs, bottom-sheet modals/drawers on mobile.
 - **Note on Gym Removal:** The embedded `openGym` module was intentionally removed per user request so Coby LIFE stays lightweight, fast, and focused on Tasks + Finance + future custom modules.
 
 ---

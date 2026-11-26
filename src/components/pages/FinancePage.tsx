@@ -3,16 +3,22 @@ import { useApp } from '../../store/AppContext';
 import { TxType } from '../../types';
 import {
   computeSafeToSpend,
+  createDefaultFinancePeriod,
   currentCycleKey,
   detectAllWalletDrifts,
+  FinancePeriodSelection,
   getCycleRange,
   getEffectiveExpense,
   getEffectiveIncome,
+  isDefaultCurrentPeriod,
   isTxInCycle,
+  resolveFinancePeriod,
+  shiftFinancePeriod,
 } from '../../utils/financeEngine';
 import {
   formatMoney,
   formatMoneyCompact,
+  formatMonthShort,
   formatShortDate,
   localIsoDate,
   parseSmartAmount,
@@ -20,6 +26,7 @@ import {
   WALLET_KIND_LABEL,
 } from '../../utils/format';
 import { useStaggerEntrance } from '../../utils/motion';
+import { FinanceCalendarPopover } from '../finance/FinanceCalendarPopover';
 import { GmailInboxView } from '../finance/GmailInboxView';
 import { MagneticButton, SlidingSegmented } from '../Motion';
 import {
@@ -66,7 +73,12 @@ export const FinancePage: React.FC = () => {
   } = useApp();
 
   const paydayDay = state.finance.paydayDay || 1;
-  const [cycleKey, setCycleKey] = useState(() => currentCycleKey(new Date(), paydayDay));
+  const [period, setPeriod] = useState<FinancePeriodSelection>(() =>
+    createDefaultFinancePeriod(new Date(), paydayDay)
+  );
+  const [calOpen, setCalOpen] = useState(false);
+  const calTriggerRef = useRef<HTMLButtonElement>(null);
+
   const [searchAllTime, setSearchAllTime] = useState(false);
   const [filterType, setFilterType] = useState<TxType | 'all' | 'split'>('all');
   const [filterWallet, setFilterWallet] = useState<string>('all');
@@ -94,6 +106,15 @@ export const FinancePage: React.FC = () => {
     }
   }, [state.finance.wallets, state.finance.categories, quickWallet, quickCat]);
 
+  useEffect(() => {
+    setHoverMonthIdx(null);
+  }, [period]);
+
+  const handleSelectPeriod = (next: FinancePeriodSelection) => {
+    setPeriod(next);
+    setSearchAllTime(false);
+  };
+
   const contentRef = useRef<HTMLDivElement>(null);
   const tab: FinanceTabId =
     route.sub === 'inbox' ||
@@ -103,14 +124,36 @@ export const FinancePage: React.FC = () => {
       ? route.sub
       : 'overview';
 
-  useStaggerEntrance(contentRef, '.fin-anim', [tab, cycleKey]);
-
   const { currency } = state.settings;
   const usdRate = state.finance.usdVndRate || 25500;
   const cycleRange = useMemo(
-    () => getCycleRange(cycleKey, paydayDay),
-    [cycleKey, paydayDay]
+    () => resolveFinancePeriod(period, paydayDay, state.finance.transactions),
+    [period, paydayDay, state.finance.transactions]
   );
+
+  const periodAnimKey = `${period.kind}:${cycleRange.startIso}:${cycleRange.endIso}`;
+  useStaggerEntrance(contentRef, '.fin-anim', [tab, periodAnimKey]);
+
+  const isDefaultPeriod = isDefaultCurrentPeriod(period, paydayDay);
+  const budgetMultiplier = cycleRange.budgetMultiplier ?? 1;
+  const isScaledBudget = Math.abs(budgetMultiplier - 1) > 0.001;
+  const activeBillCycleKey = cycleRange.isCurrent
+    ? currentCycleKey(new Date(), paydayDay)
+    : cycleRange.cycleKey;
+
+  const periodBadge = useMemo(() => {
+    if (period.kind === '3m') return '3M';
+    if (period.kind === '6m') return '6M';
+    if (period.kind === 'year') return '1Y';
+    if (period.kind === 'all') return 'ALL';
+    if (period.kind === 'custom') {
+      if (Number.isInteger(budgetMultiplier) && budgetMultiplier > 1) {
+        return `${budgetMultiplier}M`;
+      }
+      return `${cycleRange.daysTotal}D`;
+    }
+    return null;
+  }, [period.kind, budgetMultiplier, cycleRange.daysTotal]);
 
   const pendingInbox = useMemo(
     () => state.finance.inbox.filter((it) => it.status === 'pending'),
@@ -174,8 +217,24 @@ export const FinancePage: React.FC = () => {
     return { income, expense, net, savingsRate, totalBalance, byCat, breakdown };
   }, [cycleTransactions, walletBalances, catMap]);
 
-  const sixCycleSeries = useMemo(() => {
-    const keys = Array.from({ length: 6 }, (_, i) => shiftMonthKey(cycleKey, i - 5));
+  const chartSeries = useMemo(() => {
+    const coveredCount = cycleRange.coveredCycleKeys?.length || 1;
+    const showTwelve =
+      period.kind === 'year' ||
+      period.kind === 'all' ||
+      period.kind === '6m' ||
+      coveredCount > 6;
+
+    const keys =
+      period.kind === 'year'
+        ? Array.from(
+            { length: 12 },
+            (_, i) => `${period.year}-${String(i + 1).padStart(2, '0')}`
+          )
+        : Array.from({ length: showTwelve ? 12 : 6 }, (_, i) =>
+            shiftMonthKey(cycleRange.cycleKey, i - (showTwelve ? 11 : 5))
+          );
+
     return keys.map((ck) => {
       const r = getCycleRange(ck, paydayDay);
       let inc = 0;
@@ -187,22 +246,36 @@ export const FinancePage: React.FC = () => {
       }
       return {
         cycleKey: ck,
-        label: r.shortLabel,
+        label: showTwelve ? formatMonthShort(ck) : r.shortLabel,
         fullLabel: r.label,
         income: inc,
         expense: exp,
       };
     });
-  }, [state.finance.transactions, cycleKey, paydayDay]);
+  }, [
+    state.finance.transactions,
+    period.kind,
+    period.year,
+    cycleRange.cycleKey,
+    cycleRange.coveredCycleKeys,
+    paydayDay,
+  ]);
+
+  const coveredChartKeys = useMemo(
+    () => new Set(cycleRange.coveredCycleKeys || [cycleRange.cycleKey]),
+    [cycleRange.coveredCycleKeys, cycleRange.cycleKey]
+  );
 
   const maxChartVal = useMemo(() => {
     const floor = currency === 'USD' ? 100 : 1_000_000;
-    return Math.max(floor, ...sixCycleSeries.flatMap((m) => [m.income, m.expense]));
-  }, [sixCycleSeries, currency]);
+    return Math.max(floor, ...chartSeries.flatMap((m) => [m.income, m.expense]));
+  }, [chartSeries, currency]);
+
+  const effectiveAllTime = searchAllTime || period.kind === 'all';
 
   const filteredTx = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const baseList = searchAllTime
+    const baseList = effectiveAllTime
       ? [...state.finance.transactions].sort((a, b) =>
           (b.timestamp || b.date).localeCompare(a.timestamp || a.date)
         )
@@ -233,7 +306,7 @@ export const FinancePage: React.FC = () => {
       return true;
     });
   }, [
-    searchAllTime,
+    effectiveAllTime,
     state.finance.transactions,
     cycleTransactions,
     filterType,
@@ -256,7 +329,11 @@ export const FinancePage: React.FC = () => {
       quickCat || state.finance.categories.find((c) => c.kind === 'expense')?.id || '';
     if (!targetWallet) return;
     const today = localIsoDate();
-    const txDate = cycleRange.isCurrent ? today : cycleRange.endIso;
+    const txDate = cycleRange.isCurrent
+      ? today
+      : today < cycleRange.startIso
+        ? cycleRange.startIso
+        : cycleRange.endIso;
 
     createTransaction({
       type: 'expense',
@@ -289,7 +366,20 @@ export const FinancePage: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `finance-${cycleKey}.csv`;
+    const fileSlug = effectiveAllTime
+      ? 'all-time'
+      : period.kind === 'cycle'
+        ? period.cycleKey
+        : period.kind === '3m'
+          ? `3m-${period.cycleKey}`
+          : period.kind === '6m'
+            ? `6m-${period.cycleKey}`
+            : period.kind === 'year'
+              ? `year-${period.year}`
+              : cycleRange.startIso === cycleRange.endIso
+                ? cycleRange.startIso
+                : `${cycleRange.startIso}-to-${cycleRange.endIso}`;
+    a.download = `finance-${fileSlug}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     pushToast(`Exported ${filteredTx.length} transactions to CSV`);
@@ -299,6 +389,7 @@ export const FinancePage: React.FC = () => {
   const isGmailConfigured = Boolean(
     cloudConfig.gmailIngestKey?.trim() || cloudConfig.gmailGasExecUrl?.trim()
   );
+  const hoveredChartPoint = hoverMonthIdx !== null ? chartSeries[hoverMonthIdx] : undefined;
 
   return (
     <>
@@ -308,24 +399,64 @@ export const FinancePage: React.FC = () => {
           <div className="month-stepper">
             <button
               type="button"
-              className="icon-btn"
-              style={{ width: 32, height: 32 }}
-              aria-label="Previous cycle"
-              onClick={() => setCycleKey((m) => shiftMonthKey(m, -1))}
+              className="icon-btn month-stepper__arrow"
+              aria-label="Previous period"
+              disabled={period.kind === 'all'}
+              onClick={() => setPeriod((p) => shiftFinancePeriod(p, -1, paydayDay))}
             >
               <IconChevronLeft size={15} />
             </button>
-            <span className="month-stepper__label">{cycleRange.label}</span>
+
+            <button
+              ref={calTriggerRef}
+              type="button"
+              className={`month-stepper__trigger ${calOpen ? 'is-open' : ''}`}
+              aria-haspopup="dialog"
+              aria-expanded={calOpen}
+              onClick={() => setCalOpen((v) => !v)}
+              title="Open calendar & period range picker"
+            >
+              <IconCalendar size={14} className="month-stepper__cal-icon" />
+              <span className="month-stepper__label">{cycleRange.label}</span>
+              {periodBadge && <span className="month-stepper__badge">{periodBadge}</span>}
+              <span className={`month-stepper__chev ${calOpen ? 'is-open' : ''}`} aria-hidden="true">
+                <IconChevronRight size={12} />
+              </span>
+            </button>
+
             <button
               type="button"
-              className="icon-btn"
-              style={{ width: 32, height: 32 }}
-              aria-label="Next cycle"
-              onClick={() => setCycleKey((m) => shiftMonthKey(m, 1))}
+              className="icon-btn month-stepper__arrow"
+              aria-label="Next period"
+              disabled={period.kind === 'all'}
+              onClick={() => setPeriod((p) => shiftFinancePeriod(p, 1, paydayDay))}
             >
               <IconChevronRight size={15} />
             </button>
           </div>
+
+          <FinanceCalendarPopover
+            open={calOpen}
+            anchorRef={calTriggerRef}
+            onClose={() => setCalOpen(false)}
+            selection={period}
+            activeRange={cycleRange}
+            paydayDay={paydayDay}
+            transactions={state.finance.transactions}
+            currency={currency}
+            onSelectPeriod={handleSelectPeriod}
+          />
+
+          {!isDefaultPeriod && (
+            <button
+              type="button"
+              className="fin-reset-pill fin-desk-only"
+              onClick={() => handleSelectPeriod(createDefaultFinancePeriod(new Date(), paydayDay))}
+              title="Reset to current cycle"
+            >
+              Today
+            </button>
+          )}
 
           <span className="fin-desk-only" style={{ fontSize: 13, color: 'var(--muted)' }}>
             Total balance: <strong style={{ color: 'var(--text)' }}>{formatMoney(monthStats.totalBalance, currency)}</strong>
@@ -445,7 +576,13 @@ export const FinancePage: React.FC = () => {
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    {safeMetrics.paceStatus === 'unbudgeted' ? 'Cycle Personal Spend' : 'Safe to Spend Today'}
+                    {safeMetrics.paceStatus === 'unbudgeted'
+                      ? period.kind === 'cycle'
+                        ? 'Cycle Personal Spend'
+                        : 'Period Personal Spend'
+                      : cycleRange.isCurrent
+                        ? 'Safe to Spend Today'
+                        : 'Daily Spend Average'}
                   </span>
                   {safeMetrics.paceStatus !== 'unbudgeted' && (
                     <span
@@ -464,6 +601,13 @@ export const FinancePage: React.FC = () => {
                           : 'On pace'}
                     </span>
                   )}
+                  {isScaledBudget && safeMetrics.totalBudget > 0 && (
+                    <span className="pill pill--sky">
+                      {Number.isInteger(budgetMultiplier)
+                        ? `${budgetMultiplier}× monthly cap`
+                        : `${cycleRange.daysTotal}d pro-rated`}
+                    </span>
+                  )}
                   {paydayDay > 1 && (
                     <span className="pill pill--muted">Payday: {paydayDay}th</span>
                   )}
@@ -472,18 +616,26 @@ export const FinancePage: React.FC = () => {
                 <div className="pace-hero__num">
                   {safeMetrics.paceStatus === 'unbudgeted'
                     ? formatMoney(monthStats.expense, currency)
-                    : `${formatMoney(safeMetrics.safeToday, currency)} / day`}
+                    : cycleRange.isCurrent
+                      ? `${formatMoney(safeMetrics.safeToday, currency)} / day`
+                      : `${formatMoney(
+                          Math.round(monthStats.expense / Math.max(1, cycleRange.daysTotal)),
+                          currency
+                        )} / day`}
                 </div>
 
                 <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
                   {safeMetrics.paceStatus === 'unbudgeted' ? (
                     <span>Set category budgets to unlock daily safe-to-spend pacing</span>
-                  ) : (
+                  ) : cycleRange.isCurrent ? (
                     <span>
                       <strong>{formatMoney(safeMetrics.remainingPool, currency)}</strong> budget left ·{' '}
-                      {cycleRange.isCurrent
-                        ? `${cycleRange.daysRemaining} day${cycleRange.daysRemaining === 1 ? '' : 's'} remaining`
-                        : cycleRange.label}
+                      {cycleRange.daysRemaining} day{cycleRange.daysRemaining === 1 ? '' : 's'} remaining
+                    </span>
+                  ) : (
+                    <span>
+                      <strong>{formatMoney(safeMetrics.remainingPool, currency)}</strong> left of{' '}
+                      {formatMoney(safeMetrics.totalBudget, currency)} · {cycleRange.label}
                     </span>
                   )}
                 </div>
@@ -511,7 +663,9 @@ export const FinancePage: React.FC = () => {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--faint)' }}>
                       <span>Used {safeMetrics.actualPct}% of budget</span>
-                      <span>Cycle elapsed {safeMetrics.idealPct}%</span>
+                      <span>
+                        {period.kind === 'cycle' ? 'Cycle' : 'Period'} elapsed {safeMetrics.idealPct}%
+                      </span>
                     </div>
                   </>
                 )}
@@ -589,7 +743,7 @@ export const FinancePage: React.FC = () => {
                       textAlign: 'left',
                     }}
                   >
-                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12.5, fontWeight: 600 }}>
                       Fronted / Split owed back ({safeMetrics.openReimbursementsCount})
                     </span>
                     <strong style={{ fontSize: 12.5, color: 'var(--sky)' }}>
@@ -672,15 +826,21 @@ export const FinancePage: React.FC = () => {
             </div>
 
             <div className="bento">
-              {/* 6-Cycle Cashflow Chart */}
+              {/* Multi-Cycle Cashflow Chart (6 or 12 cycles) */}
               <div className="card col-7 fin-anim">
                 <div className="card__head">
                   <div>
-                    <h2 className="card__title">6-Cycle Cashflow</h2>
+                    <h2 className="card__title">
+                      {period.kind === 'year'
+                        ? `${period.year} Cashflow`
+                        : chartSeries.length === 12
+                          ? '12-Cycle Cashflow'
+                          : '6-Cycle Cashflow'}
+                    </h2>
                     <p className="card__sub">
-                      {hoverMonthIdx !== null
-                        ? `${sixCycleSeries[hoverMonthIdx].fullLabel}: In ${formatMoney(sixCycleSeries[hoverMonthIdx].income, currency)} · Out ${formatMoney(sixCycleSeries[hoverMonthIdx].expense, currency)}`
-                        : 'Tap any bar to inspect that cycle'}
+                      {hoveredChartPoint
+                        ? `${hoveredChartPoint.fullLabel}: In ${formatMoney(hoveredChartPoint.income, currency)} · Out ${formatMoney(hoveredChartPoint.expense, currency)}`
+                        : 'Tap any bar to jump directly to that cycle'}
                     </p>
                   </div>
                   <div className="chart-legend">
@@ -695,29 +855,42 @@ export const FinancePage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="dual-chart">
-                  {sixCycleSeries.map((pt, idx) => {
+                <div className={`dual-chart ${chartSeries.length === 12 ? 'dual-chart--12' : ''}`}>
+                  {chartSeries.map((pt, idx) => {
                     const incH = Math.max(4, Math.round((pt.income / maxChartVal) * 100));
                     const expH = Math.max(4, Math.round((pt.expense / maxChartVal) * 100));
-                    const active = pt.cycleKey === cycleKey;
+                    const inSelectedRange = coveredChartKeys.has(pt.cycleKey);
+                    const isPrimaryAnchor = pt.cycleKey === cycleRange.cycleKey && period.kind === 'cycle';
                     return (
                       <div
                         key={pt.cycleKey}
-                        className={`dual-chart__col ${active ? 'is-current' : ''}`}
+                        className={[
+                          'dual-chart__col',
+                          isPrimaryAnchor ? 'is-current' : '',
+                          inSelectedRange ? 'is-in-range' : '',
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
                         onMouseEnter={() => setHoverMonthIdx(idx)}
                         onMouseLeave={() => setHoverMonthIdx(null)}
-                        onClick={() => setCycleKey(pt.cycleKey)}
+                        onClick={() =>
+                          handleSelectPeriod({
+                            kind: 'cycle',
+                            cycleKey: pt.cycleKey,
+                            year: Number(pt.cycleKey.slice(0, 4)),
+                          })
+                        }
                       >
                         <div className="dual-chart__bars">
                           <div
                             className="dual-chart__bar dual-chart__bar--in"
                             style={{ height: `${pt.income > 0 ? incH : 2}%` }}
-                            title={`Income: ${formatMoney(pt.income, currency)}`}
+                            title={`${pt.fullLabel} · Income: ${formatMoney(pt.income, currency)}`}
                           />
                           <div
                             className="dual-chart__bar dual-chart__bar--out"
                             style={{ height: `${pt.expense > 0 ? expH : 2}%` }}
-                            title={`Expense: ${formatMoney(pt.expense, currency)}`}
+                            title={`${pt.fullLabel} · Expense: ${formatMoney(pt.expense, currency)}`}
                           />
                         </div>
                         <div className="dual-chart__label">{pt.label}</div>
@@ -745,7 +918,7 @@ export const FinancePage: React.FC = () => {
 
                 {monthStats.breakdown.length === 0 ? (
                   <div className="empty-state" style={{ padding: '32px 12px' }}>
-                    No personal expenses logged in this cycle.
+                    No personal expenses logged in this period.
                   </div>
                 ) : (
                   <div className="stack-list">
@@ -801,7 +974,9 @@ export const FinancePage: React.FC = () => {
             <div className="card__head" style={{ flexWrap: 'wrap' }}>
               <div>
                 <h2 className="card__title">Ledger ({filteredTx.length})</h2>
-                <p className="card__sub">Tap any row to edit, settle splits, or delete</p>
+                <p className="card__sub">
+                  {effectiveAllTime ? 'All recorded history' : cycleRange.label} · Tap any row to edit, settle splits, or delete
+                </p>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <select
@@ -852,11 +1027,21 @@ export const FinancePage: React.FC = () => {
                 </div>
                 <button
                   type="button"
-                  className={`btn btn--sm ${searchAllTime ? 'btn--primary' : 'btn--ghost'}`}
-                  onClick={() => setSearchAllTime((v) => !v)}
-                  title="Toggle searching across all cycles vs selected cycle"
+                  className={`btn btn--sm ${effectiveAllTime ? 'btn--primary' : 'btn--ghost'}`}
+                  onClick={() => {
+                    if (period.kind === 'all') {
+                      handleSelectPeriod(createDefaultFinancePeriod(new Date(), paydayDay));
+                    } else {
+                      setSearchAllTime((v) => !v);
+                    }
+                  }}
+                  title="Toggle searching across all cycles vs selected period"
                 >
-                  {searchAllTime ? 'All cycles' : 'This cycle'}
+                  {effectiveAllTime
+                    ? 'All cycles'
+                    : period.kind === 'cycle'
+                      ? 'This cycle'
+                      : 'Selected range'}
                 </button>
                 <button
                   type="button"
@@ -963,9 +1148,19 @@ export const FinancePage: React.FC = () => {
             <div className="card fin-anim">
               <div className="card__head" style={{ flexWrap: 'wrap' }}>
                 <div>
-                  <h2 className="card__title">Cycle Budgets ({cycleRange.label})</h2>
+                  <h2 className="card__title">
+                    {period.kind === 'cycle'
+                      ? `Cycle Budgets (${cycleRange.label})`
+                      : `Period Budgets (${cycleRange.label})`}
+                  </h2>
                   <p className="card__sub">
-                    Personal share caps per category — highlights at 80% and 100%
+                    {isScaledBudget
+                      ? `Scaled to ${
+                          Number.isInteger(budgetMultiplier)
+                            ? `${budgetMultiplier}× monthly limits`
+                            : `${cycleRange.daysTotal}-day pro-rated limits`
+                        } — editing updates base monthly cap`
+                      : 'Personal share caps per category — highlights at 80% and 100%'}
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -978,7 +1173,12 @@ export const FinancePage: React.FC = () => {
                       onChange={(e) => {
                         const nextDay = Number(e.target.value) || 1;
                         setPaydayDay(nextDay);
-                        setCycleKey(currentCycleKey(new Date(), nextDay));
+                        const nextCk = currentCycleKey(new Date(), nextDay);
+                        setPeriod((prev) => ({
+                          ...prev,
+                          cycleKey: nextCk,
+                          year: prev.kind === 'year' ? prev.year : Number(nextCk.slice(0, 4)),
+                        }));
                       }}
                     >
                       {[1, 5, 10, 15, 20, 25, 28].map((d) => (
@@ -1002,7 +1202,8 @@ export const FinancePage: React.FC = () => {
               <div className="budget-grid">
                 {expenseCategories.map((cat) => {
                   const budgetObj = state.finance.budgets.find((b) => b.categoryId === cat.id);
-                  const limit = budgetObj?.monthlyLimit || 0;
+                  const baseLimit = budgetObj?.monthlyLimit || 0;
+                  const limit = baseLimit > 0 ? Math.round(baseLimit * budgetMultiplier) : 0;
                   const spent = monthStats.byCat[cat.id] || 0;
                   const pct = limit > 0 ? Math.round((spent / limit) * 100) : 0;
                   const isEditing = editingBudgetCat === cat.id;
@@ -1035,6 +1236,14 @@ export const FinancePage: React.FC = () => {
                         </span>
                       </div>
 
+                      {isScaledBudget && baseLimit > 0 && (
+                        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>
+                          {Number.isInteger(budgetMultiplier)
+                            ? `${budgetMultiplier}× monthly limit (${formatMoney(baseLimit, currency)}/mo)`
+                            : `${cycleRange.daysTotal}d pro-rated (${formatMoney(baseLimit, currency)}/mo base)`}
+                        </div>
+                      )}
+
                       <div className="meter" style={{ height: 7, margin: '8px 0 12px' }}>
                         <div
                           className="meter__fill"
@@ -1062,7 +1271,7 @@ export const FinancePage: React.FC = () => {
                           <input
                             className="input"
                             style={{ height: 34, fontSize: 13 }}
-                            placeholder="e.g., 3m, 500k (0 to clear)"
+                            placeholder="Monthly cap (e.g., 3m, 500k)"
                             value={budgetDraft}
                             onChange={(e) => setBudgetDraft(e.target.value)}
                           />
@@ -1081,10 +1290,14 @@ export const FinancePage: React.FC = () => {
                           style={{ height: 32, padding: '0 12px', fontSize: 12.5 }}
                           onClick={() => {
                             setEditingBudgetCat(cat.id);
-                            setBudgetDraft(limit > 0 ? String(limit) : '');
+                            setBudgetDraft(baseLimit > 0 ? String(baseLimit) : '');
                           }}
                         >
-                          {limit > 0 ? 'Edit limit' : '+ Set budget'}
+                          {baseLimit > 0
+                            ? isScaledBudget
+                              ? 'Edit monthly cap'
+                              : 'Edit limit'
+                            : '+ Set budget'}
                         </button>
                       )}
                     </div>
@@ -1119,7 +1332,7 @@ export const FinancePage: React.FC = () => {
               ) : (
                 <div className="stack-list">
                   {state.finance.recurringBills.map((bill) => {
-                    const isPaid = bill.lastPaidCycleKey === cycleKey;
+                    const isPaid = bill.lastPaidCycleKey === activeBillCycleKey;
                     const vndEq =
                       bill.currency === 'USD' ? Math.round(bill.amount * usdRate) : bill.amount;
 
@@ -1164,7 +1377,7 @@ export const FinancePage: React.FC = () => {
                             <button
                               type="button"
                               className="btn btn--ghost btn--sm"
-                              onClick={() => markBillPaid(bill.id, cycleKey)}
+                              onClick={() => markBillPaid(bill.id, activeBillCycleKey)}
                             >
                               <IconCheck size={13} />
                               Mark Paid
